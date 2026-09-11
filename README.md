@@ -25,6 +25,12 @@ brew reinstall python-tk@3.13 (replace by your python version)
 if issues test tk with:
 python3 -c "import tkinter; tkinter._test()"
 
+
+
+To use drag and drop: insall tkinterdnd2:
+
+pip3 install tkinterdnd2
+
 For Strava functions:
 
 You need a Strava developer API: 

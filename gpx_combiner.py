@@ -36,10 +36,20 @@ from datetime import datetime, timedelta, timezone, date
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import tkinter as tk
-from tkinter import filedialog, messagebox, simpledialog, ttk
+from tkinter import filedialog, messagebox, ttk
+
+# Drag-and-drop is not built into stdlib Tkinter — it needs the small
+# third-party "tkinterdnd2" package (pip install tkinterdnd2). The app
+# degrades gracefully without it: the "+" button still works, drag-and-drop
+# is just disabled.
+try:
+    from tkinterdnd2 import TkinterDnD, DND_FILES
+    DND_AVAILABLE = True
+except ImportError:
+    DND_AVAILABLE = False
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-APP_VERSION = "3.1"
+APP_VERSION = "3.2"
 CONFIG_PATH = os.path.join(SCRIPT_DIR, "strava_config.json")
 GPX_TEMP_DIR = os.path.join(SCRIPT_DIR, "GPX-temp")
 TILE_CACHE_DIR = os.path.join(SCRIPT_DIR, "tile_cache")
@@ -84,6 +94,32 @@ TR = {
         "no_tracks_status": "Aucune trace chargée à afficher.",
         "zoom_status": "Zoom {z}",
         "legend_title": "Légende",
+        "ok_btn": "OK",
+        "cancel_btn": "Annuler",
+        "dnd_hint": "Astuce : vous pouvez aussi glisser-déposer des fichiers GPX ici.",
+        "strava_settings_btn": "⚙ Réglages Strava",
+        "strava_settings_title": "Réglages Strava",
+        "strava_not_configured": "Aucun identifiant Strava enregistré sur cet ordinateur.",
+        "strava_client_id_label": "Client ID : {id}",
+        "strava_connected_as": "Connecté en tant que : {name}",
+        "strava_authorized_unknown": "Autorisé (nom du compte indisponible pour le moment).",
+        "strava_not_authorized": "Identifiants enregistrés, mais autorisation pas encore effectuée.",
+        "disconnect_strava": "Déconnecter et effacer les identifiants",
+        "confirm_disconnect_title": "Confirmer la déconnexion",
+        "confirm_disconnect_body": "Cela supprime le Client ID, le Client Secret et les jetons d'accès "
+                                    "enregistrés sur cet ordinateur. Il faudra les ressaisir pour reconnecter "
+                                    "Strava. Continuer ?",
+        "disconnected_title": "Déconnecté",
+        "disconnected_body": "Les identifiants Strava ont été effacés de cet ordinateur.",
+        "strava_credentials_title": "Connexion à Strava",
+        "strava_credentials_info": "Pour connecter Strava, crée une application sur developers.strava.com "
+                                    "(gratuit), puis règle son « Authorization Callback Domain » sur : localhost\n\n"
+                                    "Le Client ID et le Client Secret se trouvent ensuite sur la page de ton "
+                                    "application (« Mon application API »).",
+        "strava_credentials_missing": "Merci de renseigner le Client ID et le Client Secret.",
+        "open_strava_dev_site": "Ouvrir developers.strava.com",
+        "show_secret": "👁",
+        "hide_secret": "🙈",
         "status_none": "Aucun fichier chargé.",
         "status_one": "1 fichier chargé — ajoutez-en au moins un second pour combiner.",
         "status_multiple": "{n} fichiers chargés, prêts à être combinés.",
@@ -160,6 +196,31 @@ TR = {
         "no_tracks_status": "No tracks loaded to display.",
         "zoom_status": "Zoom {z}",
         "legend_title": "Legend",
+        "ok_btn": "OK",
+        "cancel_btn": "Cancel",
+        "dnd_hint": "Tip: you can also drag and drop GPX files here.",
+        "strava_settings_btn": "⚙ Strava settings",
+        "strava_settings_title": "Strava settings",
+        "strava_not_configured": "No Strava credentials saved on this computer.",
+        "strava_client_id_label": "Client ID: {id}",
+        "strava_connected_as": "Connected as: {name}",
+        "strava_authorized_unknown": "Authorized (account name unavailable right now).",
+        "strava_not_authorized": "Credentials saved, but not yet authorized.",
+        "disconnect_strava": "Disconnect and erase credentials",
+        "confirm_disconnect_title": "Confirm disconnect",
+        "confirm_disconnect_body": "This will delete the Client ID, Client Secret, and access tokens saved on "
+                                    "this computer. You'll need to re-enter them to reconnect Strava. Continue?",
+        "disconnected_title": "Disconnected",
+        "disconnected_body": "Strava credentials have been erased from this computer.",
+        "strava_credentials_title": "Connect to Strava",
+        "strava_credentials_info": "To connect Strava, create an application at developers.strava.com (free), "
+                                    "then set its \"Authorization Callback Domain\" to: localhost\n\n"
+                                    "The Client ID and Client Secret are then shown on your application's page "
+                                    "(\"My API Application\").",
+        "strava_credentials_missing": "Please fill in both the Client ID and Client Secret.",
+        "open_strava_dev_site": "Open developers.strava.com",
+        "show_secret": "👁",
+        "hide_secret": "🙈",
         "status_none": "No files loaded.",
         "status_one": "1 file loaded — add at least one more to combine.",
         "status_multiple": "{n} files loaded, ready to combine.",
@@ -235,6 +296,32 @@ TR = {
         "no_tracks_status": "No hay trazas cargadas para mostrar.",
         "zoom_status": "Zoom {z}",
         "legend_title": "Leyenda",
+        "ok_btn": "Aceptar",
+        "cancel_btn": "Cancelar",
+        "dnd_hint": "Consejo: también puedes arrastrar y soltar archivos GPX aquí.",
+        "strava_settings_btn": "⚙ Ajustes de Strava",
+        "strava_settings_title": "Ajustes de Strava",
+        "strava_not_configured": "No hay credenciales de Strava guardadas en este ordenador.",
+        "strava_client_id_label": "Client ID: {id}",
+        "strava_connected_as": "Conectado como: {name}",
+        "strava_authorized_unknown": "Autorizado (nombre de la cuenta no disponible por ahora).",
+        "strava_not_authorized": "Credenciales guardadas, pero aún no autorizadas.",
+        "disconnect_strava": "Desconectar y borrar credenciales",
+        "confirm_disconnect_title": "Confirmar desconexión",
+        "confirm_disconnect_body": "Esto eliminará el Client ID, el Client Secret y los tokens de acceso "
+                                    "guardados en este ordenador. Tendrás que volver a introducirlos para "
+                                    "reconectar Strava. ¿Continuar?",
+        "disconnected_title": "Desconectado",
+        "disconnected_body": "Las credenciales de Strava se han borrado de este ordenador.",
+        "strava_credentials_title": "Conectar con Strava",
+        "strava_credentials_info": "Para conectar Strava, crea una aplicación en developers.strava.com "
+                                    "(gratis) y configura su «Authorization Callback Domain» como: localhost\n\n"
+                                    "El Client ID y el Client Secret aparecen luego en la página de tu "
+                                    "aplicación («Mon application API»).",
+        "strava_credentials_missing": "Introduce el Client ID y el Client Secret.",
+        "open_strava_dev_site": "Abrir developers.strava.com",
+        "show_secret": "👁",
+        "hide_secret": "🙈",
         "status_none": "Ningún archivo cargado.",
         "status_one": "1 archivo cargado — añade al menos uno más para combinar.",
         "status_multiple": "{n} archivos cargados, listos para combinar.",
@@ -310,6 +397,32 @@ TR = {
         "no_tracks_status": "Keine Strecken zum Anzeigen geladen.",
         "zoom_status": "Zoom {z}",
         "legend_title": "Legende",
+        "ok_btn": "OK",
+        "cancel_btn": "Abbrechen",
+        "dnd_hint": "Tipp: Du kannst GPX-Dateien auch per Drag & Drop hierher ziehen.",
+        "strava_settings_btn": "⚙ Strava-Einstellungen",
+        "strava_settings_title": "Strava-Einstellungen",
+        "strava_not_configured": "Keine Strava-Zugangsdaten auf diesem Computer gespeichert.",
+        "strava_client_id_label": "Client ID: {id}",
+        "strava_connected_as": "Verbunden als: {name}",
+        "strava_authorized_unknown": "Autorisiert (Kontoname derzeit nicht verfügbar).",
+        "strava_not_authorized": "Zugangsdaten gespeichert, aber noch nicht autorisiert.",
+        "disconnect_strava": "Trennen und Zugangsdaten löschen",
+        "confirm_disconnect_title": "Trennung bestätigen",
+        "confirm_disconnect_body": "Dadurch werden Client ID, Client Secret und Zugriffstoken auf diesem "
+                                    "Computer gelöscht. Du musst sie erneut eingeben, um Strava wieder zu "
+                                    "verbinden. Fortfahren?",
+        "disconnected_title": "Getrennt",
+        "disconnected_body": "Die Strava-Zugangsdaten wurden von diesem Computer gelöscht.",
+        "strava_credentials_title": "Mit Strava verbinden",
+        "strava_credentials_info": "Erstelle zum Verbinden eine Anwendung auf developers.strava.com "
+                                    "(kostenlos) und setze deren „Authorization Callback Domain“ auf: localhost\n\n"
+                                    "Client ID und Client Secret findest du danach auf der Seite deiner "
+                                    "Anwendung („Mon application API“).",
+        "strava_credentials_missing": "Bitte Client ID und Client Secret ausfüllen.",
+        "open_strava_dev_site": "developers.strava.com öffnen",
+        "show_secret": "👁",
+        "hide_secret": "🙈",
         "status_none": "Keine Dateien geladen.",
         "status_one": "1 Datei geladen — füge mindestens eine weitere hinzu, um zu kombinieren.",
         "status_multiple": "{n} Dateien geladen, bereit zum Kombinieren.",
@@ -759,6 +872,7 @@ class StravaClient:
             "grant_type": "authorization_code",
         }).encode()
         req = urllib.request.Request(self.TOKEN_URL, data=data, method="POST")
+        req.add_header("Content-Type", "application/x-www-form-urlencoded")
         try:
             with urllib.request.urlopen(req, timeout=15) as resp:
                 payload = json.loads(resp.read().decode())
@@ -779,6 +893,7 @@ class StravaClient:
             "refresh_token": self.config["refresh_token"],
         }).encode()
         req = urllib.request.Request(self.TOKEN_URL, data=data, method="POST")
+        req.add_header("Content-Type", "application/x-www-form-urlencoded")
         try:
             with urllib.request.urlopen(req, timeout=15) as resp:
                 payload = json.loads(resp.read().decode())
@@ -824,7 +939,7 @@ class StravaClient:
 # ----------------------------------------------------------------------------
 
 class StravaImportWindow(tk.Toplevel):
-    def __init__(self, master_app):
+    def __init__(self, master_app, client):
         super().__init__(master_app.root)
         self.master_app = master_app
         self.t = master_app.t
@@ -832,7 +947,7 @@ class StravaImportWindow(tk.Toplevel):
         self.geometry("820x520")
         self.minsize(780, 420)
 
-        self.client = master_app.get_strava_client()
+        self.client = client
         self.current_page = 1
         self.selected_ids = set()
         self.activity_cache = {}
@@ -1335,6 +1450,150 @@ class MapPreviewWindow(tk.Toplevel):
 
 
 # ----------------------------------------------------------------------------
+# Strava credentials dialog + settings/disconnect window
+# ----------------------------------------------------------------------------
+
+class StravaCredentialsDialog(tk.Toplevel):
+    """Modal dialog asking for the Strava Client ID + Client Secret in one
+    window, with an explanation of where to find them. Sets .result to
+    (client_id, client_secret) on OK, or leaves it None if cancelled/closed."""
+
+    def __init__(self, master, t):
+        super().__init__(master)
+        self.t = t
+        self.result = None
+        self.title(self.t("strava_credentials_title"))
+        self.resizable(False, False)
+        self.transient(master)
+
+        frame = ttk.Frame(self, padding=16)
+        frame.pack(fill="both", expand=True)
+
+        ttk.Label(frame, text=self.t("strava_credentials_info"), justify="left",
+                  wraplength=380).pack(anchor="w", pady=(0, 10))
+
+        link = ttk.Label(frame, text=self.t("open_strava_dev_site"), foreground="#1a73e8", cursor="hand2")
+        link.pack(anchor="w", pady=(0, 14))
+        link.bind("<Button-1>", lambda e: webbrowser.open("https://www.strava.com/settings/api"))
+
+        form = ttk.Frame(frame)
+        form.pack(fill="x")
+        form.columnconfigure(1, weight=1)
+
+        ttk.Label(form, text=self.t("ask_client_id")).grid(row=0, column=0, sticky="w", pady=4)
+        self.id_var = tk.StringVar()
+        ttk.Entry(form, textvariable=self.id_var, width=26).grid(row=0, column=1, sticky="ew", pady=4)
+
+        ttk.Label(form, text=self.t("ask_client_secret")).grid(row=1, column=0, sticky="w", pady=4)
+        self.secret_var = tk.StringVar()
+        self.secret_entry = ttk.Entry(form, textvariable=self.secret_var, width=26, show="•")
+        self.secret_entry.grid(row=1, column=1, sticky="ew", pady=4)
+        self._secret_shown = False
+        self.toggle_btn = ttk.Button(form, text=self.t("show_secret"), width=3, command=self._toggle_secret)
+        self.toggle_btn.grid(row=1, column=2, padx=(4, 0))
+
+        btns = ttk.Frame(frame)
+        btns.pack(fill="x", pady=(16, 0))
+        ttk.Button(btns, text=self.t("cancel_btn"), command=self._on_cancel).pack(side="right")
+        ttk.Button(btns, text=self.t("ok_btn"), command=self._on_ok).pack(side="right", padx=(0, 6))
+
+        self.protocol("WM_DELETE_WINDOW", self._on_cancel)
+        self.bind("<Return>", lambda e: self._on_ok())
+        self.bind("<Escape>", lambda e: self._on_cancel())
+
+        self.grab_set()
+        self.id_entry_focus_target = form
+        form.winfo_children()[1].focus_set()
+
+    def _toggle_secret(self):
+        self._secret_shown = not self._secret_shown
+        self.secret_entry.config(show="" if self._secret_shown else "•")
+        self.toggle_btn.config(text=self.t("hide_secret") if self._secret_shown else self.t("show_secret"))
+
+    def _on_ok(self):
+        cid = self.id_var.get().strip()
+        secret = self.secret_var.get().strip()
+        if not cid or not secret:
+            messagebox.showwarning(self.t("strava_credentials_title"),
+                                    self.t("strava_credentials_missing"), parent=self)
+            return
+        self.result = (cid, secret)
+        self.grab_release()
+        self.destroy()
+
+    def _on_cancel(self):
+        self.result = None
+        self.grab_release()
+        self.destroy()
+
+
+class StravaSettingsWindow(tk.Toplevel):
+    """Shows the currently saved Strava account (if any) and lets the user
+    fully erase the saved Client ID / Client Secret / tokens."""
+
+    def __init__(self, master_app):
+        super().__init__(master_app.root)
+        self.master_app = master_app
+        self.t = master_app.t
+        self.title(self.t("strava_settings_title"))
+        self.resizable(False, False)
+
+        frame = ttk.Frame(self, padding=16)
+        frame.pack(fill="both", expand=True)
+
+        self.status_label = ttk.Label(frame, justify="left", wraplength=360)
+        self.status_label.pack(anchor="w", pady=(0, 14))
+        self.status_label.config(text=self.t("loading"))
+
+        btns = ttk.Frame(frame)
+        btns.pack(fill="x")
+        self.disconnect_btn = ttk.Button(btns, text=self.t("disconnect_strava"), command=self._disconnect)
+        self.disconnect_btn.pack(side="left")
+        ttk.Button(btns, text=self.t("close"), command=self.destroy).pack(side="right")
+
+        self.after(50, self._refresh_status)
+
+    def _refresh_status(self):
+        config = self.master_app.strava_config
+        if not config.get("client_id"):
+            self.status_label.config(text=self.t("strava_not_configured"))
+            self.disconnect_btn.state(["disabled"])
+            return
+
+        lines = [self.t("strava_client_id_label").format(id=config.get("client_id"))]
+        if config.get("refresh_token"):
+            name = self._fetch_athlete_name(config)
+            lines.append(self.t("strava_connected_as").format(name=name) if name
+                         else self.t("strava_authorized_unknown"))
+        else:
+            lines.append(self.t("strava_not_authorized"))
+        self.status_label.config(text="\n".join(lines))
+
+    def _fetch_athlete_name(self, config):
+        try:
+            client = StravaClient(dict(config))
+            data = client._get("/athlete")
+        except Exception:
+            return None
+        name = f"{data.get('firstname', '')} {data.get('lastname', '')}".strip()
+        return name or None
+
+    def _disconnect(self):
+        if not messagebox.askyesno(self.t("confirm_disconnect_title"), self.t("confirm_disconnect_body"),
+                                    parent=self):
+            return
+        try:
+            if os.path.exists(CONFIG_PATH):
+                os.remove(CONFIG_PATH)
+        except OSError as e:
+            messagebox.showerror(self.t("strava_settings_title"), str(e), parent=self)
+            return
+        self.master_app.strava_config = {}
+        messagebox.showinfo(self.t("disconnected_title"), self.t("disconnected_body"), parent=self)
+        self.destroy()
+
+
+# ----------------------------------------------------------------------------
 # Main app
 # ----------------------------------------------------------------------------
 
@@ -1362,12 +1621,17 @@ class GpxCombinerApp:
         return {}
 
     def get_strava_client(self):
+        """Returns a ready StravaClient, prompting for credentials if needed.
+        Returns None if the user cancels the credentials dialog — callers
+        must check for this instead of proceeding (this was the bug behind
+        the old "Cancel still continues, then times out" behavior)."""
         client = StravaClient(self.strava_config)
         if not client.has_credentials:
-            client.config["client_id"] = simpledialog.askstring(
-                self.t("ask_client_id"), self.t("ask_client_id_prompt"), parent=self.root)
-            client.config["client_secret"] = simpledialog.askstring(
-                self.t("ask_client_secret"), self.t("ask_client_secret_prompt"), parent=self.root, show="*")
+            dlg = StravaCredentialsDialog(self.root, self.t)
+            self.root.wait_window(dlg)
+            if dlg.result is None:
+                return None
+            client.config["client_id"], client.config["client_secret"] = dlg.result
             client.save()
         return client
 
@@ -1387,8 +1651,10 @@ class GpxCombinerApp:
         self.btn_clear.pack(side="left")
         self.btn_strava = ttk.Button(top, command=self.open_strava_import)
         self.btn_strava.pack(side="left", padx=6)
+        self.btn_strava_settings = ttk.Button(top, command=self.open_strava_settings)
+        self.btn_strava_settings.pack(side="left")
         self.btn_preview = ttk.Button(top, command=self.open_preview)
-        self.btn_preview.pack(side="left")
+        self.btn_preview.pack(side="left", padx=(6, 0))
 
         lang_frame = ttk.Frame(top)
         lang_frame.pack(side="right")
@@ -1409,6 +1675,15 @@ class GpxCombinerApp:
         self.listbox = tk.Listbox(mid, height=14)
         self.listbox.pack(fill="both", expand=True, pady=(4, 0))
 
+        self.dnd_hint_label = ttk.Label(mid, foreground="#888", font=("TkDefaultFont", 9, "italic"))
+        self.dnd_hint_label.pack(anchor="w", pady=(4, 0))
+
+        if DND_AVAILABLE:
+            self.root.drop_target_register(DND_FILES)
+            self.root.dnd_bind("<<Drop>>", self._on_drop_files)
+            self.listbox.drop_target_register(DND_FILES)
+            self.listbox.dnd_bind("<<Drop>>", self._on_drop_files)
+
         bottom = ttk.Frame(self.root, padding=10)
         bottom.pack(fill="x")
         self.status_var = tk.StringVar()
@@ -1427,10 +1702,12 @@ class GpxCombinerApp:
         self.btn_remove.config(text=self.t("remove_selected"))
         self.btn_clear.config(text=self.t("clear_all"))
         self.btn_strava.config(text=self.t("import_strava"))
+        self.btn_strava_settings.config(text=self.t("strava_settings_btn"))
         self.btn_preview.config(text=self.t("preview_btn"))
         self.lang_label.config(text=self.t("language"))
         self.order_label.config(text=self.t("order_label"))
         self.btn_combine.config(text=self.t("combine_save"))
+        self.dnd_hint_label.config(text=self.t("dnd_hint") if DND_AVAILABLE else "")
         self._refresh_status()
 
     def add_files(self):
@@ -1440,6 +1717,13 @@ class GpxCombinerApp:
         )
         if paths:
             self.add_files_from_paths(paths)
+
+    def _on_drop_files(self, event):
+        # event.data is a Tcl list of paths (braces around any path containing spaces)
+        paths = self.root.tk.splitlist(event.data)
+        gpx_paths = [p for p in paths if p.lower().endswith(".gpx")]
+        if gpx_paths:
+            self.add_files_from_paths(gpx_paths)
 
     def add_files_from_paths(self, paths):
         for path in paths:
@@ -1488,7 +1772,13 @@ class GpxCombinerApp:
             self.status_var.set(self.t("status_multiple").format(n=n))
 
     def open_strava_import(self):
-        StravaImportWindow(self)
+        client = self.get_strava_client()
+        if client is None:
+            return  # user cancelled the credentials dialog
+        StravaImportWindow(self, client)
+
+    def open_strava_settings(self):
+        StravaSettingsWindow(self)
 
     def open_preview(self):
         if self._preview_window is not None and self._preview_window.winfo_exists():
@@ -1549,7 +1839,7 @@ class GpxCombinerApp:
 
 
 def main():
-    root = tk.Tk()
+    root = TkinterDnD.Tk() if DND_AVAILABLE else tk.Tk()
     try:
         style = ttk.Style()
         # "aqua" is Tk's native macOS theme (real NSButton/NSPopUpButton look —
