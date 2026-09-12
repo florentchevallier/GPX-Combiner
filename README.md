@@ -27,7 +27,7 @@ python3 -c "import tkinter; tkinter._test()"
 
 
 
-To use drag and drop: insall tkinterdnd2:
+To use drag and drop: install tkinterdnd2:
 
 pip3 install tkinterdnd2
 

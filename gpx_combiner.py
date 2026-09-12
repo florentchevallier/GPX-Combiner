@@ -49,7 +49,7 @@ except ImportError:
     DND_AVAILABLE = False
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-APP_VERSION = "3.2"
+APP_VERSION = "3.3"
 CONFIG_PATH = os.path.join(SCRIPT_DIR, "strava_config.json")
 GPX_TEMP_DIR = os.path.join(SCRIPT_DIR, "GPX-temp")
 TILE_CACHE_DIR = os.path.join(SCRIPT_DIR, "tile_cache")
@@ -683,12 +683,21 @@ def pixel_to_lonlat(x, y, zoom):
 
 
 def build_gpx_from_activity(activity, streams):
-    """Build a single GPX (one <trk><trkseg>) from a Strava activity + its streams."""
+    """Build a single GPX (one <trk><trkseg>) from a Strava activity + its
+    streams, including power/heart rate/cadence/temperature as extensions —
+    using the exact same tags Strava itself writes in its own GPX exports
+    (bare <power>, plus the Garmin gpxtpx:TrackPointExtension block), so a
+    file combined from these exports re-uploads to Strava the same way."""
     latlng = streams.get("latlng", {}).get("data")
     if not latlng:
         return None
-    altitude = streams.get("altitude", {}).get("data") or [None] * len(latlng)
-    time_offsets = streams.get("time", {}).get("data") or list(range(len(latlng)))
+    n = len(latlng)
+    altitude = streams.get("altitude", {}).get("data") or [None] * n
+    time_offsets = streams.get("time", {}).get("data") or list(range(n))
+    heartrate = streams.get("heartrate", {}).get("data") or [None] * n
+    cadence = streams.get("cadence", {}).get("data") or [None] * n
+    watts = streams.get("watts", {}).get("data") or [None] * n
+    temp = streams.get("temp", {}).get("data") or [None] * n
 
     start_str = activity.get("start_date")  # e.g. "2026-09-09T09:04:00Z"
     try:
@@ -701,18 +710,39 @@ def build_gpx_from_activity(activity, streams):
         '<gpx version="1.1" creator="GPX Combiner" '
         'xmlns="http://www.topografix.com/GPX/1/1" '
         'xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" '
+        'xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v1" '
         'xsi:schemaLocation="http://www.topografix.com/GPX/1/1 '
         'http://www.topografix.com/GPX/1/1/gpx.xsd">',
         "  <trk>",
         f"    <name>{escape_xml(activity.get('name', 'Activity'))}</name>",
         "    <trkseg>",
     ]
-    for (lat, lon), ele, t in zip(latlng, altitude, time_offsets):
+    for (lat, lon), ele, t, hr, cad, w, temp_v in zip(latlng, altitude, time_offsets,
+                                                        heartrate, cadence, watts, temp):
         pt_time = (start_dt + timedelta(seconds=t)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        body = ""
         if ele is not None:
-            lines.append(f'      <trkpt lat="{lat}" lon="{lon}"><ele>{ele}</ele><time>{pt_time}</time></trkpt>')
-        else:
-            lines.append(f'      <trkpt lat="{lat}" lon="{lon}"><time>{pt_time}</time></trkpt>')
+            body += f"<ele>{ele}</ele>"
+        body += f"<time>{pt_time}</time>"
+
+        tpx_parts = []
+        if temp_v is not None:
+            tpx_parts.append(f"<gpxtpx:atemp>{temp_v}</gpxtpx:atemp>")
+        if hr is not None:
+            tpx_parts.append(f"<gpxtpx:hr>{hr}</gpxtpx:hr>")
+        if cad is not None:
+            tpx_parts.append(f"<gpxtpx:cad>{cad}</gpxtpx:cad>")
+
+        ext_parts = []
+        if w is not None:
+            ext_parts.append(f"<power>{round(w)}</power>")
+        if tpx_parts:
+            ext_parts.append("<gpxtpx:TrackPointExtension>" + "".join(tpx_parts) + "</gpxtpx:TrackPointExtension>")
+        if ext_parts:
+            body += "<extensions>" + "".join(ext_parts) + "</extensions>"
+
+        lines.append(f'      <trkpt lat="{lat}" lon="{lon}">{body}</trkpt>')
     lines.append("    </trkseg>")
     lines.append("  </trk>")
     lines.append("</gpx>")
@@ -930,7 +960,7 @@ class StravaClient:
     def get_streams(self, activity_id):
         return self._get(
             f"/activities/{activity_id}/streams",
-            {"keys": "latlng,altitude,time", "key_by_type": "true"},
+            {"keys": "latlng,altitude,time,heartrate,cadence,watts,temp", "key_by_type": "true"},
         )
 
 
@@ -1636,7 +1666,7 @@ class GpxCombinerApp:
         return client
 
     def _build_ui(self):
-        self.root.geometry("990x550")
+        self.root.geometry("1125x550")
         self.root.minsize(760, 400)
         self.root.resizable(True, True)
 
