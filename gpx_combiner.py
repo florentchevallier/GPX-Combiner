@@ -49,7 +49,7 @@ except ImportError:
     DND_AVAILABLE = False
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-APP_VERSION = "3.4"
+APP_VERSION = "3.5"
 CONFIG_PATH = os.path.join(SCRIPT_DIR, "strava_config.json")
 APP_CONFIG_PATH = os.path.join(SCRIPT_DIR, "app_config.json")  # app-wide settings (language...), kept
                                                                  # separate from Strava credentials
@@ -64,6 +64,27 @@ TIME_RE = re.compile(r"<time>(.*?)</time>", re.S | re.I)
 TRKPT_TAG_RE = re.compile(r"<trkpt\b([^>]*)>")
 LAT_ATTR_RE = re.compile(r'lat="(-?[0-9.]+)"')
 LON_ATTR_RE = re.compile(r'lon="(-?[0-9.]+)"')
+
+# Detection (presence check) and stripping (full-tag removal) for the four
+# optional data types a GPX file's <extensions> may carry. Field order is
+# used consistently everywhere these are displayed.
+EXTENSION_FIELDS = ["hr", "cadence", "power", "temp"]
+EXTENSION_FIELD_LABELS = {"hr": "HR", "cadence": "Cadence", "power": "Power", "temp": "Temp"}
+
+EXT_FIELD_DETECT_RE = {
+    "hr": re.compile(r"<gpxtpx:hr>", re.I),
+    "cadence": re.compile(r"<gpxtpx:cad>", re.I),
+    "power": re.compile(r"<(?:power|gpxpx:PowerInWatts)>", re.I),
+    "temp": re.compile(r"<gpxtpx:atemp>", re.I),
+}
+EXT_FIELD_STRIP_RE = {
+    "hr": re.compile(r"<gpxtpx:hr>.*?</gpxtpx:hr>", re.I | re.S),
+    "cadence": re.compile(r"<gpxtpx:cad>.*?</gpxtpx:cad>", re.I | re.S),
+    "power": re.compile(r"<power>.*?</power>|<gpxpx:PowerInWatts>.*?</gpxpx:PowerInWatts>", re.I | re.S),
+    "temp": re.compile(r"<gpxtpx:atemp>.*?</gpxtpx:atemp>", re.I | re.S),
+}
+EMPTY_TPX_RE = re.compile(r"<gpxtpx:TrackPointExtension>\s*</gpxtpx:TrackPointExtension>", re.I)
+EMPTY_EXT_RE = re.compile(r"<extensions>\s*</extensions>", re.I)
 
 OSM_TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
 OSM_TILE_SIZE = 256
@@ -99,6 +120,7 @@ TR = {
         "ok_btn": "OK",
         "cancel_btn": "Annuler",
         "dnd_hint": "Astuce : vous pouvez aussi glisser-déposer des fichiers GPX ici.",
+        "include_fields_label": "Inclure dans l'export :",
         "strava_settings_btn": "⚙ Réglages Strava",
         "strava_settings_title": "Réglages Strava",
         "strava_not_configured": "Aucun identifiant Strava enregistré sur cet ordinateur.",
@@ -201,6 +223,7 @@ TR = {
         "ok_btn": "OK",
         "cancel_btn": "Cancel",
         "dnd_hint": "Tip: you can also drag and drop GPX files here.",
+        "include_fields_label": "Include in export:",
         "strava_settings_btn": "⚙ Strava settings",
         "strava_settings_title": "Strava settings",
         "strava_not_configured": "No Strava credentials saved on this computer.",
@@ -301,6 +324,7 @@ TR = {
         "ok_btn": "Aceptar",
         "cancel_btn": "Cancelar",
         "dnd_hint": "Consejo: también puedes arrastrar y soltar archivos GPX aquí.",
+        "include_fields_label": "Incluir en la exportación:",
         "strava_settings_btn": "⚙ Ajustes de Strava",
         "strava_settings_title": "Ajustes de Strava",
         "strava_not_configured": "No hay credenciales de Strava guardadas en este ordenador.",
@@ -402,6 +426,7 @@ TR = {
         "ok_btn": "OK",
         "cancel_btn": "Abbrechen",
         "dnd_hint": "Tipp: Du kannst GPX-Dateien auch per Drag & Drop hierher ziehen.",
+        "include_fields_label": "In den Export einschließen:",
         "strava_settings_btn": "⚙ Strava-Einstellungen",
         "strava_settings_title": "Strava-Einstellungen",
         "strava_not_configured": "Keine Strava-Zugangsdaten auf diesem Computer gespeichert.",
@@ -647,6 +672,23 @@ def extract_sort_key(content, fallback):
 def extract_first_trkseg(content):
     m = TRKSEG_RE.search(content)
     return m.group(0) if m else None
+
+
+def detect_extension_fields(content):
+    """Which of hr/cadence/power/temp are present in this GPX's extensions."""
+    return {key: bool(rx.search(content)) for key, rx in EXT_FIELD_DETECT_RE.items()}
+
+
+def strip_extension_fields(content, include):
+    """Remove the extension tags for any field where include[field] is False,
+    then clean up any now-empty <gpxtpx:TrackPointExtension>/<extensions>
+    wrapper tags left behind."""
+    for key, rx in EXT_FIELD_STRIP_RE.items():
+        if not include.get(key, True):
+            content = rx.sub("", content)
+    content = EMPTY_TPX_RE.sub("", content)
+    content = EMPTY_EXT_RE.sub("", content)
+    return content
 
 
 def parse_trkpts(content):
@@ -1000,6 +1042,12 @@ class StravaClient:
 # ----------------------------------------------------------------------------
 
 class StravaImportWindow(tk.Toplevel):
+    # Fixed PIXEL widths (not character-based ttk "width=") shared by the
+    # header row and every activity row, so bold header text and regular row
+    # text line up exactly regardless of the font's per-character width.
+    COL_CHECKBOX_PX = 28
+    COL_WIDTHS_PX = {"date": 100, "name": 190, "type": 80, "distance": 90, "duration": 90, "city": 130}
+
     def __init__(self, master_app, client):
         super().__init__(master_app.root)
         self.master_app = master_app
@@ -1023,6 +1071,16 @@ class StravaImportWindow(tk.Toplevel):
         else:
             self.after(200, self.load_page)
 
+    def _make_cell(self, parent, width_px, **label_kwargs):
+        """A fixed-pixel-width container with a Label inside — used for both
+        the header and each row, so columns line up regardless of font/weight."""
+        cell = tk.Frame(parent, width=width_px, height=22)
+        cell.pack(side="left")
+        cell.pack_propagate(False)
+        label = ttk.Label(cell, **label_kwargs)
+        label.pack(side="left", anchor="w")
+        return label
+
     def _build_ui(self):
         top = ttk.Frame(self, padding=10)
         top.pack(fill="x")
@@ -1042,13 +1100,13 @@ class StravaImportWindow(tk.Toplevel):
 
         header = ttk.Frame(self.list_frame)
         header.pack(fill="x")
-        spacer = ttk.Frame(header, width=24)
-        spacer.pack(side="left")
-        spacer.pack_propagate(False)
-        for text, w in [(self.t("col_date"), 12), (self.t("col_name"), 22),
-                         (self.t("col_type"), 10), (self.t("col_distance"), 10),
-                         (self.t("col_duration"), 10), (self.t("col_city"), 16)]:
-            ttk.Label(header, text=text, width=w, font=("TkDefaultFont", 9, "bold")).pack(side="left")
+        # Fixed-pixel spacer matching the checkbox column of every row.
+        tk.Frame(header, width=self.COL_CHECKBOX_PX, height=1).pack(side="left")
+        for key, text in [("date", self.t("col_date")), ("name", self.t("col_name")),
+                           ("type", self.t("col_type")), ("distance", self.t("col_distance")),
+                           ("duration", self.t("col_duration")), ("city", self.t("col_city"))]:
+            self._make_cell(header, self.COL_WIDTHS_PX[key],
+                             text=text, font=("TkDefaultFont", 9, "bold"))
 
         self.rows_frame = ttk.Frame(self.list_frame)
         self.rows_frame.pack(fill="both", expand=True, pady=4)
@@ -1174,7 +1232,13 @@ class StravaImportWindow(tk.Toplevel):
                     self.selected_ids.discard(aid)
                 self._update_download_label()
 
-            cb = ttk.Checkbutton(row, variable=var, command=on_toggle)
+            # Same fixed-pixel-width spacer as the header, containing the
+            # actual checkbox (rather than relying on the checkbox's own
+            # native/theme-dependent width matching a separate header spacer).
+            cb_cell = tk.Frame(row, width=self.COL_CHECKBOX_PX, height=22)
+            cb_cell.pack(side="left")
+            cb_cell.pack_propagate(False)
+            cb = ttk.Checkbutton(cb_cell, variable=var, command=on_toggle)
             cb.pack(side="left")
             self.rows.append((var, a["id"]))
 
@@ -1183,14 +1247,14 @@ class StravaImportWindow(tk.Toplevel):
             dur_s = a.get("moving_time") or 0
             dur_str = f"{dur_s // 3600:02d}:{(dur_s % 3600) // 60:02d}:{dur_s % 60:02d}"
 
-            ttk.Label(row, text=date_str, width=12).pack(side="left")
-            ttk.Label(row, text=a.get("name", ""), width=22).pack(side="left")
-            ttk.Label(row, text=a.get("type", ""), width=10).pack(side="left")
-            ttk.Label(row, text=f"{dist_km:.2f} km", width=10).pack(side="left")
-            ttk.Label(row, text=dur_str, width=10).pack(side="left")
+            self._make_cell(row, self.COL_WIDTHS_PX["date"], text=date_str)
+            self._make_cell(row, self.COL_WIDTHS_PX["name"], text=a.get("name", ""))
+            self._make_cell(row, self.COL_WIDTHS_PX["type"], text=a.get("type", ""))
+            self._make_cell(row, self.COL_WIDTHS_PX["distance"], text=f"{dist_km:.2f} km")
+            self._make_cell(row, self.COL_WIDTHS_PX["duration"], text=dur_str)
 
             city_var = tk.StringVar(value=a.get("location_city") or "…")
-            ttk.Label(row, textvariable=city_var, width=16).pack(side="left")
+            self._make_cell(row, self.COL_WIDTHS_PX["city"], textvariable=city_var)
             city_vars[a["id"]] = city_var
 
         self._update_download_label()
@@ -1760,6 +1824,20 @@ class GpxCombinerApp:
         bottom.pack(fill="x")
         self.status_var = tk.StringVar()
         ttk.Label(bottom, textvariable=self.status_var, foreground="#555").pack(anchor="w")
+
+        fields_row = ttk.Frame(bottom)
+        fields_row.pack(anchor="e", pady=(6, 0))
+        self.include_fields_label = ttk.Label(fields_row)
+        self.include_fields_label.pack(side="left", padx=(0, 8))
+        self.include_field_vars = {}
+        self.include_field_checks = {}
+        for key in EXTENSION_FIELDS:
+            var = tk.BooleanVar(value=True)
+            self.include_field_vars[key] = var
+            cb = ttk.Checkbutton(fields_row, text=EXTENSION_FIELD_LABELS[key], variable=var)
+            cb.pack(side="left", padx=(0, 10))
+            self.include_field_checks[key] = cb
+
         self.btn_combine = ttk.Button(bottom, command=self.combine_and_save)
         self.btn_combine.pack(anchor="e", pady=(8, 0))
 
@@ -1782,6 +1860,7 @@ class GpxCombinerApp:
         self.order_label.config(text=self.t("order_label"))
         self.btn_combine.config(text=self.t("combine_save"))
         self.dnd_hint_label.config(text=self.t("dnd_hint") if DND_AVAILABLE else "")
+        self.include_fields_label.config(text=self.t("include_fields_label"))
         self._refresh_status()
 
     def add_files(self):
@@ -1811,15 +1890,17 @@ class GpxCombinerApp:
                                       self.t("err_read_body").format(path=path, err=e))
                 continue
             sort_key = extract_sort_key(content, fallback=os.path.basename(path))
-            self.files.append({"path": path, "content": content, "sort_key": sort_key})
+            ext_fields = detect_extension_fields(content)
+            self.files.append({"path": path, "content": content, "sort_key": sort_key,
+                                "ext_fields": ext_fields})
         self.refresh_list()
 
     def remove_selected(self):
         sel = list(self.listbox.curselection())
         if not sel:
             return
-        sel_paths = {self.listbox.get(i).split("  —  ")[-1] for i in sel}
-        self.files = [f for f in self.files if f["path"] not in sel_paths]
+        sel_indices = set(sel)
+        self.files = [f for i, f in enumerate(self.files) if i not in sel_indices]
         self.refresh_list()
 
     def clear_all(self):
@@ -1831,7 +1912,12 @@ class GpxCombinerApp:
         self.listbox.delete(0, tk.END)
         for i, f in enumerate(self.files, start=1):
             label = f["sort_key"] or self.t("unknown_time")
-            self.listbox.insert(tk.END, f"{i}. {label}  —  {f['path']}")
+            line = f"{i}. {label}  —  {f['path']}"
+            badges = "  ".join(f"{EXTENSION_FIELD_LABELS[k]} ✅"
+                                for k in EXTENSION_FIELDS if f.get("ext_fields", {}).get(k))
+            if badges:
+                line += f"   |   {badges}"
+            self.listbox.insert(tk.END, line)
         self._refresh_status()
         if self._preview_window is not None and self._preview_window.winfo_exists():
             self._preview_window.reload_tracks()
@@ -1867,8 +1953,10 @@ class GpxCombinerApp:
             messagebox.showwarning(self.t("warn_notenough_title"), self.t("warn_notenough_body"))
             return
 
+        include = {k: v.get() for k, v in self.include_field_vars.items()}
+
         base = self.files[0]
-        base_content = base["content"]
+        base_content = strip_extension_fields(base["content"], include)
         marker = "</trkseg>"
         idx = base_content.find(marker)
         if idx == -1:
@@ -1883,7 +1971,7 @@ class GpxCombinerApp:
             if seg is None:
                 skipped.append(f["path"])
                 continue
-            extra_segments.append(seg)
+            extra_segments.append(strip_extension_fields(seg, include))
 
         if skipped:
             messagebox.showwarning(self.t("warn_skipped_title"),
