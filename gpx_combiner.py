@@ -49,8 +49,10 @@ except ImportError:
     DND_AVAILABLE = False
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-APP_VERSION = "3.3"
+APP_VERSION = "3.4"
 CONFIG_PATH = os.path.join(SCRIPT_DIR, "strava_config.json")
+APP_CONFIG_PATH = os.path.join(SCRIPT_DIR, "app_config.json")  # app-wide settings (language...), kept
+                                                                 # separate from Strava credentials
 GPX_TEMP_DIR = os.path.join(SCRIPT_DIR, "GPX-temp")
 TILE_CACHE_DIR = os.path.join(SCRIPT_DIR, "tile_cache")
 
@@ -705,6 +707,7 @@ def build_gpx_from_activity(activity, streams):
     except (TypeError, ValueError):
         start_dt = datetime.now(timezone.utc)
 
+    gpx_type = strava_activity_gpx_type(activity)
     lines = [
         '<?xml version="1.0" encoding="UTF-8"?>',
         '<gpx version="1.1" creator="GPX Combiner" '
@@ -715,8 +718,10 @@ def build_gpx_from_activity(activity, streams):
         'http://www.topografix.com/GPX/1/1/gpx.xsd">',
         "  <trk>",
         f"    <name>{escape_xml(activity.get('name', 'Activity'))}</name>",
-        "    <trkseg>",
     ]
+    if gpx_type:
+        lines.append(f"    <type>{escape_xml(gpx_type)}</type>")
+    lines.append("    <trkseg>")
     for (lat, lon), ele, t, hr, cad, w, temp_v in zip(latlng, altitude, time_offsets,
                                                         heartrate, cadence, watts, temp):
         pt_time = (start_dt + timedelta(seconds=t)).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -752,6 +757,32 @@ def build_gpx_from_activity(activity, streams):
 def escape_xml(s):
     return (s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
              .replace('"', "&quot;").replace("'", "&apos;"))
+
+
+# Strava's own GPX exports use these lowercase values for <type>. Falls back
+# to the lowercased raw Strava type for anything not in this table.
+STRAVA_TYPE_TO_GPX_TYPE = {
+    "Ride": "cycling", "VirtualRide": "cycling", "EBikeRide": "cycling",
+    "MountainBikeRide": "cycling", "GravelRide": "cycling", "Velomobile": "cycling",
+    "Handcycle": "cycling",
+    "Run": "running", "VirtualRun": "running", "TrailRun": "running",
+    "Walk": "walking", "Hike": "hiking",
+    "Swim": "swimming",
+    "AlpineSki": "skiing", "BackcountrySki": "skiing", "NordicSki": "skiing", "RollerSki": "skiing",
+    "Snowboard": "snowboarding", "Snowshoe": "snowshoeing", "IceSkate": "ice skating",
+    "InlineSkate": "inline skating", "Skateboard": "skateboarding",
+    "RockClimbing": "rock climbing", "Rowing": "rowing", "Canoeing": "canoeing",
+    "Kayaking": "kayaking", "StandUpPaddling": "stand up paddling", "Surfing": "surfing",
+    "Kitesurf": "kitesurfing", "Windsurf": "windsurfing", "Sail": "sailing",
+    "WeightTraining": "weight training", "Workout": "workout", "Crossfit": "crossfit",
+    "Yoga": "yoga", "Elliptical": "elliptical", "StairStepper": "stair stepper",
+    "Golf": "golf", "Soccer": "soccer", "Wheelchair": "wheelchair",
+}
+
+
+def strava_activity_gpx_type(activity):
+    raw = activity.get("type") or ""
+    return STRAVA_TYPE_TO_GPX_TYPE.get(raw, raw.lower()) if raw else ""
 
 
 def sanitize_filename(name):
@@ -1011,6 +1042,9 @@ class StravaImportWindow(tk.Toplevel):
 
         header = ttk.Frame(self.list_frame)
         header.pack(fill="x")
+        spacer = ttk.Frame(header, width=24)
+        spacer.pack(side="left")
+        spacer.pack_propagate(False)
         for text, w in [(self.t("col_date"), 12), (self.t("col_name"), 22),
                          (self.t("col_type"), 10), (self.t("col_distance"), 10),
                          (self.t("col_duration"), 10), (self.t("col_city"), 16)]:
@@ -1630,9 +1664,10 @@ class StravaSettingsWindow(tk.Toplevel):
 class GpxCombinerApp:
     def __init__(self, root):
         self.root = root
-        self.lang = "fr"
+        self.app_config = self._load_json(APP_CONFIG_PATH)
+        self.lang = self.app_config.get("language") if self.app_config.get("language") in TR else "en"
         self.files = []
-        self.strava_config = self._load_config()
+        self.strava_config = self._load_json(CONFIG_PATH)
         self._preview_window = None
 
         self._build_ui()
@@ -1641,14 +1676,21 @@ class GpxCombinerApp:
     def t(self, key):
         return TR[self.lang][key]
 
-    def _load_config(self):
-        if os.path.exists(CONFIG_PATH):
+    def _load_json(self, path):
+        if os.path.exists(path):
             try:
-                with open(CONFIG_PATH) as f:
+                with open(path) as f:
                     return json.load(f)
             except (json.JSONDecodeError, OSError):
                 pass
         return {}
+
+    def _save_app_config(self):
+        try:
+            with open(APP_CONFIG_PATH, "w") as f:
+                json.dump(self.app_config, f)
+        except OSError:
+            pass
 
     def get_strava_client(self):
         """Returns a ready StravaClient, prompting for credentials if needed.
@@ -1724,6 +1766,8 @@ class GpxCombinerApp:
     def _on_language_change(self, event=None):
         name_to_code = {v: k for k, v in LANGUAGE_NAMES.items()}
         self.lang = name_to_code[self.lang_combo.get()]
+        self.app_config["language"] = self.lang
+        self._save_app_config()
         self._retranslate()
 
     def _retranslate(self):
