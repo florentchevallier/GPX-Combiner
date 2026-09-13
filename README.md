@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="Art/Logo/Logo%20v3.jpeg" alt="GPX Combiner" width="600">
+  <img src="Art/Logo/Logo_v3.jpeg" alt="GPX Combiner" width="600">
 </p>
 
 <h1 align="center">GPX Combiner</h1>
