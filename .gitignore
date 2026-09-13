@@ -4,3 +4,5 @@ strava_config.json
 .DS_Store
 /tile_cache
 app_config.json
+/build
+/dist
