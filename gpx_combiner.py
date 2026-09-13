@@ -55,7 +55,7 @@ except ImportError:
     DND_AVAILABLE = False
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-APP_VERSION = "3.5"
+APP_VERSION = "3.5.1"
 CONFIG_PATH = os.path.join(SCRIPT_DIR, "strava_config.json")
 APP_CONFIG_PATH = os.path.join(SCRIPT_DIR, "app_config.json")  # app-wide settings (language...), kept
                                                                  # separate from Strava credentials
@@ -134,6 +134,7 @@ TR = {
         "strava_connected_as": "Connecté en tant que : {name}",
         "strava_authorized_unknown": "Autorisé (nom du compte indisponible pour le moment).",
         "strava_not_authorized": "Identifiants enregistrés, mais autorisation pas encore effectuée.",
+        "connect_strava": "Connecter…",
         "disconnect_strava": "Déconnecter et effacer les identifiants",
         "confirm_disconnect_title": "Confirmer la déconnexion",
         "confirm_disconnect_body": "Cela supprime le Client ID, le Client Secret et les jetons d'accès "
@@ -237,6 +238,7 @@ TR = {
         "strava_connected_as": "Connected as: {name}",
         "strava_authorized_unknown": "Authorized (account name unavailable right now).",
         "strava_not_authorized": "Credentials saved, but not yet authorized.",
+        "connect_strava": "Connect…",
         "disconnect_strava": "Disconnect and erase credentials",
         "confirm_disconnect_title": "Confirm disconnect",
         "confirm_disconnect_body": "This will delete the Client ID, Client Secret, and access tokens saved on "
@@ -338,6 +340,7 @@ TR = {
         "strava_connected_as": "Conectado como: {name}",
         "strava_authorized_unknown": "Autorizado (nombre de la cuenta no disponible por ahora).",
         "strava_not_authorized": "Credenciales guardadas, pero aún no autorizadas.",
+        "connect_strava": "Conectar…",
         "disconnect_strava": "Desconectar y borrar credenciales",
         "confirm_disconnect_title": "Confirmar desconexión",
         "confirm_disconnect_body": "Esto eliminará el Client ID, el Client Secret y los tokens de acceso "
@@ -440,6 +443,7 @@ TR = {
         "strava_connected_as": "Verbunden als: {name}",
         "strava_authorized_unknown": "Autorisiert (Kontoname derzeit nicht verfügbar).",
         "strava_not_authorized": "Zugangsdaten gespeichert, aber noch nicht autorisiert.",
+        "connect_strava": "Verbinden…",
         "disconnect_strava": "Trennen und Zugangsdaten löschen",
         "confirm_disconnect_title": "Trennung bestätigen",
         "confirm_disconnect_body": "Dadurch werden Client ID, Client Secret und Zugriffstoken auf diesem "
@@ -1681,8 +1685,10 @@ class StravaSettingsWindow(tk.Toplevel):
 
         btns = ttk.Frame(frame)
         btns.pack(fill="x")
+        self.connect_btn = ttk.Button(btns, text=self.t("connect_strava"), command=self._connect)
+        self.connect_btn.pack(side="left")
         self.disconnect_btn = ttk.Button(btns, text=self.t("disconnect_strava"), command=self._disconnect)
-        self.disconnect_btn.pack(side="left")
+        self.disconnect_btn.pack(side="left", padx=(6, 0))
         ttk.Button(btns, text=self.t("close"), command=self.destroy).pack(side="right")
 
         self.after(50, self._refresh_status)
@@ -1692,8 +1698,11 @@ class StravaSettingsWindow(tk.Toplevel):
         if not config.get("client_id"):
             self.status_label.config(text=self.t("strava_not_configured"))
             self.disconnect_btn.state(["disabled"])
+            self.connect_btn.state(["!disabled"])
             return
 
+        self.connect_btn.state(["disabled"])
+        self.disconnect_btn.state(["!disabled"])
         lines = [self.t("strava_client_id_label").format(id=config.get("client_id"))]
         if config.get("refresh_token"):
             name = self._fetch_athlete_name(config)
@@ -1702,6 +1711,12 @@ class StravaSettingsWindow(tk.Toplevel):
         else:
             lines.append(self.t("strava_not_authorized"))
         self.status_label.config(text="\n".join(lines))
+
+    def _connect(self):
+        client = self.master_app.get_strava_client()
+        if client is None:
+            return  # user cancelled the credentials dialog again — stay put, no error
+        self._refresh_status()
 
     def _fetch_athlete_name(self, config):
         try:
