@@ -2,3 +2,5 @@
 strava_config.json
 /GPX-temp
 .DS_Store
+/tile_cache
+app_config.json

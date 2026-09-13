@@ -2,21 +2,27 @@
 """
 GPX Combiner + Strava Import
 ==============================
-Application locale (tkinter, bibliothèque standard uniquement — aucun pip install
-requis) permettant de :
-  1. Combiner plusieurs fichiers GPX en un seul, dans l'ordre chronologique.
-  2. Importer directement des activités depuis Strava (OAuth), les convertir en
-     GPX (reconstruits à partir des flux GPS/altitude/temps de l'API Strava,
-     qui ne propose pas d'export GPX direct) et les charger dans la liste à
-     combiner.
+A local desktop app (tkinter, standard library only — no pip install
+required for the core app) that lets you:
+  1. Combine several GPX files into one, in chronological order.
+  2. Import activities directly from Strava (OAuth), convert them to GPX
+     (rebuilt from the GPS/altitude/time streams of the Strava API, which
+     doesn't offer a direct GPX export) and load them into the list to
+     combine.
+  3. Preview all loaded tracks on an OpenStreetMap-based map.
 
-Prérequis pour l'import Strava :
-  - Une application créée sur https://developers.strava.com (Client ID + Client
-    Secret).
-  - Le champ "Authorization Callback Domain" de cette application doit être
-    réglé sur : localhost
+Optional dependency:
+  - Drag-and-drop needs the small third-party "tkinterdnd2" package
+    (pip3 install tkinterdnd2). The app runs fine without it — drag-and-drop
+    is just disabled, the "+" button still works.
 
-Lancement :
+Requirements for Strava import:
+  - An application created at https://developers.strava.com (Client ID +
+    Client Secret).
+  - That application's "Authorization Callback Domain" field must be set
+    to: localhost
+
+Run with:
     python3 gpx_combiner.py
 """
 
