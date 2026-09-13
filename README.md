@@ -154,7 +154,7 @@ Your Client ID/Secret and access tokens are saved **only** in a `strava_config.j
 <details>
 <summary><strong>The app crashes on launch / "Python quit unexpectedly"</strong></summary>
 
-This is almost always a broken Tcl/Tk install from Homebrew. See the [macOS installation](#macos) steps above — installing/repairing `python-tk` and restarting your Mac fixes this in most cases.
+This is almost always a broken Tcl/Tk install from Homebrew. See the [Run from source](#option-b--run-from-source) steps above — installing/repairing `python-tk` and restarting your Mac fixes this in most cases.
 </details>
 
 <details>
