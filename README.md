@@ -127,7 +127,7 @@ Strava requires every app — including one running on your own computer — to 
    | **Category** | Any category fits — e.g. *Visualizer* |
    | **Club** | Leave blank |
    | **Website** | `http://localhost` (or any URL — Strava requires something here, but it isn't actually used by this app) |
-   | **Application Icon** | Strava requires you to upload an image to complete this form. Any square-ish image works — the app's logo above, or even just a placeholder picture. It's only shown on Strava's own site, never inside GPX Combiner. |
+   | **Application Icon** | Strava requires you to upload an image to complete this form. Any square-ish image works — the app's logo [here](https://github.com/florentchevallier/GPX-Combiner/blob/main/Art/Logo/Logo_v3_square.png?raw=true), or even just a placeholder picture. It's only shown on Strava's own site, never inside GPX Combiner. |
    | **Authorization Callback Domain** | **`localhost`** — this one matters. GPX Combiner runs a tiny, temporary local web server on your own computer to receive Strava's authorization response, and Strava will refuse the connection if this field isn't set to exactly `localhost`. |
 
 3. **Save.** Strava will show you a **Client ID** (a short number) and a **Client Secret** (a longer string, hidden behind a "Show" button).
