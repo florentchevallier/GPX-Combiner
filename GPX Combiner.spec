@@ -22,7 +22,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='GPX Combiner v3.5',
+    name='GPX Combiner',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
