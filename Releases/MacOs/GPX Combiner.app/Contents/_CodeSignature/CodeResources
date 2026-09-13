@@ -4,10 +4,6 @@
 <dict>
 	<key>files</key>
 	<dict>
-		<key>Resources/PythonApplet.icns</key>
-		<data>
-		9zRqvdRORUNhZjC9sNbLi26ck94=
-		</data>
 		<key>Resources/__boot__.py</key>
 		<data>
 		dOTL8s6FtOxyvcXzTkqW9+/wskI=
@@ -23,6 +19,10 @@
 		<key>Resources/gpx_combiner.py</key>
 		<data>
 		zf98vPaqgNYy6vygsN3j3ZLbckg=
+		</data>
+		<key>Resources/icon.icns</key>
+		<data>
+		yNcP8MESoDlH8sDEcxkc0aRTpbI=
 		</data>
 		<key>Resources/include/python3.13/pyconfig.h</key>
 		<data>
@@ -3218,7 +3218,7 @@
 		</data>
 		<key>Resources/lib/python313.zip</key>
 		<data>
-		xmsiiDUw3jHNqGoAalIxw+ktkAQ=
+		Y17yLpDUQSDPjeA+R62qRZ/c8iA=
 		</data>
 		<key>Resources/openssl.ca/cert.pem</key>
 		<data>
@@ -3226,7 +3226,7 @@
 		</data>
 		<key>Resources/site.pyc</key>
 		<data>
-		FYuOssk6K8SUmSs0q25Be/IC0Jw=
+		9w0+rakGWAbovt6H+q+1JoluIAk=
 		</data>
 		<key>Resources/zlib.cpython-313-darwin.so</key>
 		<data>
@@ -3289,17 +3289,6 @@
 			<key>requirement</key>
 			<string>cdhash H"017b2424593f1b2292a941c0a63f62eb5934650e" or cdhash H"0e65e724e2e26cfa04112c9cf8e4087c1c8193f1"</string>
 		</dict>
-		<key>Resources/PythonApplet.icns</key>
-		<dict>
-			<key>hash</key>
-			<data>
-			9zRqvdRORUNhZjC9sNbLi26ck94=
-			</data>
-			<key>hash2</key>
-			<data>
-			eHksEElSftDQiDfMtwxo3rWW/gCukmOJdD1flXi1uxE=
-			</data>
-		</dict>
 		<key>Resources/__boot__.py</key>
 		<dict>
 			<key>hash</key>
@@ -3342,6 +3331,17 @@
 			<key>hash2</key>
 			<data>
 			JPR8YFwOPu4sLgiCOYtcbrLzV7Tdp73Kx88glryQ8hk=
+			</data>
+		</dict>
+		<key>Resources/icon.icns</key>
+		<dict>
+			<key>hash</key>
+			<data>
+			yNcP8MESoDlH8sDEcxkc0aRTpbI=
+			</data>
+			<key>hash2</key>
+			<data>
+			/qnxz0XXXbcKtKYvsct5CunTZkkApy7hmfEk+lnNGdk=
 			</data>
 		</dict>
 		<key>Resources/include/python3.13/pyconfig.h</key>
@@ -12131,11 +12131,11 @@
 		<dict>
 			<key>hash</key>
 			<data>
-			xmsiiDUw3jHNqGoAalIxw+ktkAQ=
+			Y17yLpDUQSDPjeA+R62qRZ/c8iA=
 			</data>
 			<key>hash2</key>
 			<data>
-			PTtsHa40wiA2zdYhAvI85/WtRpzpWJRjmZfxA8acirQ=
+			NHP5KOJbaz7utqaDXy7NGZug6FlGI1EbEOb85nt1bJc=
 			</data>
 		</dict>
 		<key>Resources/openssl.ca/cert.pem</key>
@@ -12153,11 +12153,11 @@
 		<dict>
 			<key>hash</key>
 			<data>
-			FYuOssk6K8SUmSs0q25Be/IC0Jw=
+			9w0+rakGWAbovt6H+q+1JoluIAk=
 			</data>
 			<key>hash2</key>
 			<data>
-			6ELzsEkmgRD8CtQQpSffiNGkTOW0i4QSSI7znAJKM24=
+			ov7mVQNtnU+JcRoOYAHksDOX72KG2Mgyw5MY0GSjbfI=
 			</data>
 		</dict>
 		<key>Resources/zlib.cpython-313-darwin.so</key>

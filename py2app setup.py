@@ -22,7 +22,7 @@ DATA_FILES = []
 
 OPTIONS = {
     "argv_emulation": False,
-    # "iconfile": "icon.icns",  # uncomment and point to a .icns file if you make one
+    "iconfile": "icon.icns",
     "plist": {
         "CFBundleName": "GPX Combiner",
         "CFBundleDisplayName": "GPX Combiner",
