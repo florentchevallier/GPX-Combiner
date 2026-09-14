@@ -35,11 +35,24 @@ OPTIONS = {
     },
     # IMPORTANT: list whole packages here (not just "includes"), so py2app
     # copies their non-Python resource files too — this matters especially
-    # for tkinterdnd2, whose bundled Tcl "tkdnd" extension files would
-    # otherwise be silently left out and drag-and-drop would fail in the
-    # packaged app even though it works when running the .py directly.
+    # for tkinterdnd2 (its bundled Tcl "tkdnd" extension files) and certifi
+    # (its cacert.pem CA bundle) — both would otherwise be silently left out,
+    # breaking drag-and-drop / HTTPS calls in the packaged app even though
+    # they work fine when running the .py directly.
     "packages": ["tkinter"],
 }
+
+# Strongly recommended: certifi provides a CA bundle the app can use for
+# HTTPS regardless of what certificates (if any) are set up on the machine
+# it runs on — without it, a packaged build is prone to
+# SSLCertVerificationError on Strava/API calls even when the exact same code
+# works fine when run from source with a normal Python install.
+try:
+    import certifi  # noqa: F401
+    OPTIONS["packages"].append("certifi")
+except ImportError:
+    print("WARNING: certifi not installed (pip3 install certifi) — the packaged app "
+          "may fail HTTPS requests with a certificate error on some machines.")
 
 # Only ask py2app to bundle tkinterdnd2 if it's actually installed —
 # otherwise the build fails outright instead of just disabling drag-and-drop

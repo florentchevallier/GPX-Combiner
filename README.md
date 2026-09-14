@@ -160,13 +160,19 @@ This is almost always a broken Tcl/Tk install from Homebrew. See the [Run from s
 <details>
 <summary><strong>Strava activities won't load / a certificate error appears in Terminal</strong></summary>
 
-This means Python can't verify Strava's SSL certificate — common with the official python.org installer, which doesn't reuse macOS's system certificates. Fix it with:
+This means Python can't verify Strava's SSL certificate.
 
-```bash
-python3 --version   # note your version number
+- **Downloaded app (from Releases):** this shouldn't happen — the app bundles its own trusted certificates (`certifi`). If you still hit this, please [open an issue](https://github.com/florentchevallier/GPX-Combiner/issues).
+- **Running from source:** common with the official python.org installer, which doesn't reuse macOS's system certificates. Easiest fix — install `certifi` so the app uses its bundled CA list instead of the system one:
+  ```bash
+  pip3 install certifi
+  ```
+  Alternatively (or if that doesn't help), reinstall Python's own certificates:
+  ```bash
+  python3 --version   # note your version number
 
-open "/Applications/Python 3.13/Install Certificates.command"   # adjust 3.13 to match
-```
+  open "/Applications/Python 3.13/Install Certificates.command"   # adjust 3.13 to match
+  ```
 </details>
 
 <details>
@@ -192,7 +198,7 @@ Make sure your Strava application's **Authorization Callback Domain** is set to 
 Want to build your own `.app`/`.exe` instead of using the one from [Releases](https://github.com/florentchevallier/GPX-Combiner/releases)? See `setup.py` (uses [py2app](https://py2app.readthedocs.io/)):
 
 ```bash
-pip3 install py2app
+pip3 install py2app certifi
 python3 setup.py py2app -A     # fast "alias" build, for testing
 python3 setup.py py2app        # full standalone build, in dist/
 ```

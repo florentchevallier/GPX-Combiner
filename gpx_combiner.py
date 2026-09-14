@@ -38,6 +38,25 @@ import webbrowser
 import urllib.request
 import urllib.parse
 import urllib.error
+import ssl
+
+# Use certifi's CA bundle for HTTPS verification when available. This matters
+# most for a py2app-packaged build: it embeds its own isolated Python, which
+# has no access to the system certificate store or to whatever
+# "Install Certificates.command" set up for a python.org install — without
+# this, HTTPS calls (Strava token exchange, etc.) fail with
+# SSLCertVerificationError in a packaged app even though the same code works
+# fine when run from source. Falls back to Python's default SSL behavior if
+# certifi isn't installed (pip3 install certifi).
+try:
+    import certifi
+    SSL_CONTEXT = ssl.create_default_context(cafile=certifi.where())
+except ImportError:
+    SSL_CONTEXT = None
+
+
+def urlopen(request, timeout):
+    return urllib.request.urlopen(request, timeout=timeout, context=SSL_CONTEXT)
 from datetime import datetime, timedelta, timezone, date
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
@@ -55,7 +74,7 @@ except ImportError:
     DND_AVAILABLE = False
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-APP_VERSION = "3.5.1"
+APP_VERSION = "3.5.2"
 CONFIG_PATH = os.path.join(SCRIPT_DIR, "strava_config.json")
 APP_CONFIG_PATH = os.path.join(SCRIPT_DIR, "app_config.json")  # app-wide settings (language...), kept
                                                                  # separate from Strava credentials
@@ -865,7 +884,7 @@ def reverse_geocode_city(lat, lon):
     )
     req = urllib.request.Request(url, headers={"User-Agent": "GPXCombiner/1.0 (local desktop app)"})
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with urlopen(req, timeout=10) as resp:
             data = json.loads(resp.read().decode())
     except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, ValueError):
         return ""
@@ -987,7 +1006,7 @@ class StravaClient:
         req = urllib.request.Request(self.TOKEN_URL, data=data, method="POST")
         req.add_header("Content-Type", "application/x-www-form-urlencoded")
         try:
-            with urllib.request.urlopen(req, timeout=15) as resp:
+            with urlopen(req, timeout=15) as resp:
                 payload = json.loads(resp.read().decode())
         except urllib.error.HTTPError as e:
             raise StravaAuthError(e.read().decode())
@@ -1008,7 +1027,7 @@ class StravaClient:
         req = urllib.request.Request(self.TOKEN_URL, data=data, method="POST")
         req.add_header("Content-Type", "application/x-www-form-urlencoded")
         try:
-            with urllib.request.urlopen(req, timeout=15) as resp:
+            with urlopen(req, timeout=15) as resp:
                 payload = json.loads(resp.read().decode())
         except urllib.error.HTTPError as e:
             raise StravaAuthError(e.read().decode())
@@ -1025,7 +1044,7 @@ class StravaClient:
         req = urllib.request.Request(url)
         req.add_header("Authorization", f"Bearer {self.config['access_token']}")
         try:
-            with urllib.request.urlopen(req, timeout=20) as resp:
+            with urlopen(req, timeout=20) as resp:
                 return json.loads(resp.read().decode())
         except urllib.error.HTTPError as e:
             raise StravaAPIError(f"{e.code} {e.read().decode()}")
@@ -1557,7 +1576,7 @@ class MapPreviewWindow(tk.Toplevel):
         url = OSM_TILE_URL.format(z=z, x=x, y=y)
         req = urllib.request.Request(url, headers={"User-Agent": "GPXCombiner/1.0 (local desktop app)"})
         try:
-            with urllib.request.urlopen(req, timeout=10) as resp:
+            with urlopen(req, timeout=10) as resp:
                 data = resp.read()
         except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError):
             return
@@ -1716,6 +1735,12 @@ class StravaSettingsWindow(tk.Toplevel):
         client = self.master_app.get_strava_client()
         if client is None:
             return  # user cancelled the credentials dialog again — stay put, no error
+        if not client.has_token:
+            try:
+                client.authorize_interactive()
+            except StravaAuthError as e:
+                messagebox.showerror(self.t("auth_failed_title"),
+                                      self.t("auth_failed_body").format(err=e), parent=self)
         self._refresh_status()
 
     def _fetch_athlete_name(self, config):
