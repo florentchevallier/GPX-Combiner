@@ -27,6 +27,7 @@ Run with:
 """
 
 import os
+import sys
 import re
 import json
 import time
@@ -74,7 +75,16 @@ except ImportError:
     DND_AVAILABLE = False
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-APP_VERSION = "3.5.2"
+
+
+def resource_path(filename):
+    """Resolve a bundled resource (e.g. icon.ico) both when running from
+    source and when frozen by PyInstaller, which extracts bundled data files
+    into a temp folder (sys._MEIPASS) rather than leaving them next to the
+    script."""
+    base = getattr(sys, "_MEIPASS", SCRIPT_DIR)
+    return os.path.join(base, filename)
+APP_VERSION = "3.5.3"
 CONFIG_PATH = os.path.join(SCRIPT_DIR, "strava_config.json")
 APP_CONFIG_PATH = os.path.join(SCRIPT_DIR, "app_config.json")  # app-wide settings (language...), kept
                                                                  # separate from Strava credentials
@@ -2062,6 +2072,15 @@ def main():
             style.theme_use("clam")
     except tk.TclError:
         pass
+
+    if sys.platform == "win32":
+        ico_path = resource_path("icon.ico")
+        if os.path.exists(ico_path):
+            try:
+                root.iconbitmap(ico_path)
+            except tk.TclError:
+                pass  # e.g. a malformed .ico — window still works, just without an icon
+
     GpxCombinerApp(root)
     root.mainloop()
 
