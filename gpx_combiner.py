@@ -84,7 +84,7 @@ def resource_path(filename):
     script."""
     base = getattr(sys, "_MEIPASS", SCRIPT_DIR)
     return os.path.join(base, filename)
-APP_VERSION = "3.5.3"
+APP_VERSION = "3.6"
 CONFIG_PATH = os.path.join(SCRIPT_DIR, "strava_config.json")
 APP_CONFIG_PATH = os.path.join(SCRIPT_DIR, "app_config.json")  # app-wide settings (language...), kept
                                                                  # separate from Strava credentials
@@ -1147,8 +1147,49 @@ class StravaImportWindow(tk.Toplevel):
             self._make_cell(header, self.COL_WIDTHS_PX[key],
                              text=text, font=("TkDefaultFont", 9, "bold"))
 
-        self.rows_frame = ttk.Frame(self.list_frame)
-        self.rows_frame.pack(fill="both", expand=True, pady=4)
+        self.rows_canvas = tk.Canvas(self.list_frame, highlightthickness=0)
+        rows_scrollbar = ttk.Scrollbar(self.list_frame, orient="vertical", command=self.rows_canvas.yview)
+        self.rows_canvas.configure(yscrollcommand=rows_scrollbar.set)
+        self.rows_canvas.pack(side="left", fill="both", expand=True, pady=4)
+        rows_scrollbar.pack(side="right", fill="y", pady=4)
+
+        self.rows_frame = ttk.Frame(self.rows_canvas)
+        self._rows_window = self.rows_canvas.create_window((0, 0), window=self.rows_frame, anchor="nw")
+
+        # Keep the scrollable region in sync with the row list's actual size,
+        # and make the inner frame track the canvas's width (only the height
+        # should ever need to scroll).
+        self.rows_frame.bind(
+            "<Configure>",
+            lambda e: self.rows_canvas.configure(scrollregion=self.rows_canvas.bbox("all")),
+        )
+        self.rows_canvas.bind(
+            "<Configure>",
+            lambda e: self.rows_canvas.itemconfigure(self._rows_window, width=e.width),
+        )
+
+        def _on_mousewheel(event):
+            delta = event.delta
+            if sys.platform == "darwin":
+                self.rows_canvas.yview_scroll(-delta, "units")
+            else:
+                self.rows_canvas.yview_scroll(-int(delta / 120), "units")
+
+        def _bind_mousewheel(_event=None):
+            self.rows_canvas.bind_all("<MouseWheel>", _on_mousewheel)
+            self.rows_canvas.bind_all("<Button-4>", lambda e: self.rows_canvas.yview_scroll(-3, "units"))
+            self.rows_canvas.bind_all("<Button-5>", lambda e: self.rows_canvas.yview_scroll(3, "units"))
+
+        def _unbind_mousewheel(_event=None):
+            self.rows_canvas.unbind_all("<MouseWheel>")
+            self.rows_canvas.unbind_all("<Button-4>")
+            self.rows_canvas.unbind_all("<Button-5>")
+
+        # Only capture the mouse wheel while the cursor is actually over the
+        # list, so scrolling elsewhere in the window (or in other windows)
+        # isn't hijacked by this canvas.
+        self.rows_canvas.bind("<Enter>", _bind_mousewheel)
+        self.rows_canvas.bind("<Leave>", _unbind_mousewheel)
 
         self.status_var = tk.StringVar(value="")
         ttk.Label(self.list_frame, textvariable=self.status_var, foreground="#555").pack(anchor="w")
