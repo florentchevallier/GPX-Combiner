@@ -5,7 +5,7 @@ a = Analysis(
     ['gpx_combiner.py'],
     pathex=[],
     binaries=[],
-    datas=[],
+    datas=[('icon.ico', '.')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
