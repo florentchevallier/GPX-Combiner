@@ -1,0 +1,1 @@
+python -m PyInstaller --onefile --windowed --icon=C:\Users\florent\Documents\GitHub\GPX-Combiner\icon.ico --add-data "icon.ico;." C:\Users\florent\Documents\GitHub\GPX-Combiner\gpx_combiner.py
