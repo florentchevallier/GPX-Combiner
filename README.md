@@ -46,6 +46,8 @@ Prebuilt, ready-to-run apps for **macOS** and **Windows** are published on the
 
 Download the `.app`/`.dmg` for macOS or the `.exe`/`.zip` for Windows from the **Assets** section of that release. If you'd rather run the Python script directly (any OS, always the latest source), see [Option B](#option-b--run-from-source) below.
 
+🧩 Using QGIS instead? A beta plugin is in the same release's Assets — see [QGIS plugin](#qgis-plugin) below.
+
 > **Unsigned build warning:** these builds aren't signed with a paid Apple/Microsoft developer certificate, so:
 > - **macOS:** Gatekeeper will say the app "cannot be opened" the first time — right-click (or Control-click) the app → **Open** → **Open** again in the dialog. You only need to do this once.
 > - **Windows:** SmartScreen may show "Windows protected your PC" — click **More info → Run anyway**.
@@ -211,7 +213,21 @@ Note: without an Apple Developer certificate and notarization, macOS Gatekeeper 
 
 A companion QGIS plugin lives in [`qgis-plugin/`](qgis-plugin/), sharing its GPX-combining and Strava logic with the desktop app via [`core/`](core/). It lets you load GPX tracks as styled QGIS layers (with an OpenStreetMap basemap and directional arrows), import Strava activities, and combine/export — without leaving QGIS.
 
-**Status: beta, tested on macOS only so far** — the code is platform-independent Python/Qt/QGIS APIs, but Windows/Linux haven't been verified yet. Not yet packaged as an installable `.zip` or published to the official QGIS plugin repository; for now it's set up via symlinks for local development/testing:
+**Status: beta, tested on macOS only so far** — the code is platform-independent Python/Qt/QGIS APIs, but Windows/Linux haven't been verified yet.
+
+### Install the beta
+
+The plugin's `.zip` is published alongside the desktop app on the [**v3.6.3 release**](https://github.com/florentchevallier/GPX-Combiner/releases/tag/v3.6.3) (and on [every release](https://github.com/florentchevallier/GPX-Combiner/releases) from here on).
+
+1. Download `gpx_combiner-0.2.0-beta.zip` from that release's **Assets**
+2. In QGIS: **Plugins → Manage and Install Plugins → Install from ZIP**, select the downloaded file
+3. If it doesn't show up afterward, check "Show also experimental plugins" under **Plugins → Manage and Install Plugins → Settings** — this beta is still flagged experimental
+
+Not yet published to the official QGIS plugin repository (the list QGIS shows automatically without needing a `.zip`) — see the [changelog](CHANGELOG.md) for what's implemented so far, and please [report issues](https://github.com/florentchevallier/GPX-Combiner/issues) you run into, especially on Windows/Linux.
+
+### Developing / running from source
+
+If you'd rather work straight from a repo checkout instead of installing the packaged `.zip`:
 
 ```bash
 # From this repo, inside qgis-plugin/: link core/ in so it's reachable
@@ -227,9 +243,7 @@ ln -s ../core core
 ln -s "$(pwd)" "<profile plugins folder>/gpx_combiner"
 ```
 
-Then in QGIS: **Plugins → Manage and Install Plugins → Installed**, enable "GPX Combiner" (check "Show also experimental plugins" in Settings if it doesn't appear).
-
-See [`CHANGELOG.md`](CHANGELOG.md) for what's implemented so far.
+Then enable "GPX Combiner" the same way as above. To build your own `.zip` from source instead (e.g. after making changes), see [`build_plugin_zip.py`](build_plugin_zip.py) — it stages a clean copy (physically bundling `core/`, no symlinks or dev cruft) into `dist/`.
 
 ## Changelog
 
