@@ -5,12 +5,12 @@ Usage (run from the same folder as gpx_combiner.py):
 
     # Fast "alias" build for testing — symlinks to your source files,
     # rebuilds instantly when you edit gpx_combiner.py. Use this first.
-    python3 setup.py py2app -A
+    python3 py2app_setup.py py2app -A
 
     # Real standalone build — copies everything needed into a self-contained
     # .app, ready to share/move to another Mac. Slower, do this once you've
     # confirmed the alias build works.
-    python3 setup.py py2app
+    python3 py2app_setup.py py2app
 
 Either way, the .app ends up in dist/GPX Combiner.app
 """
@@ -26,8 +26,8 @@ OPTIONS = {
     "plist": {
         "CFBundleName": "GPX Combiner",
         "CFBundleDisplayName": "GPX Combiner",
-        "CFBundleShortVersionString": "3.5",
-        "CFBundleVersion": "3.5",
+        "CFBundleShortVersionString": "3.6.3",
+        "CFBundleVersion": "3.6.3",
         "NSHumanReadableCopyright": "",
         # Without an Apple Developer certificate + notarization, macOS
         # Gatekeeper will warn on first launch (right-click > Open bypasses
