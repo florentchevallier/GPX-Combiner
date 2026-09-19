@@ -11,7 +11,7 @@
 <p align="center">
   <img alt="platform" src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-informational">
   <img alt="python" src="https://img.shields.io/badge/python-3.9%2B-blue">
-  <img alt="version" src="https://img.shields.io/badge/version-3.5.1-orange">
+  <img alt="version" src="https://img.shields.io/badge/version-3.6.3-orange">
 </p>
 
 <p align="center">
@@ -34,6 +34,8 @@
 - [Troubleshooting](#troubleshooting)
 - [Privacy](#privacy)
 - [Packaging as a standalone app yourself](#packaging-as-a-standalone-app-yourself)
+- [QGIS plugin](#qgis-plugin)
+- [Changelog](#changelog)
 
 ## Download
 
@@ -205,6 +207,34 @@ python3 setup.py py2app        # full standalone build, in dist/
 
 Note: without an Apple Developer certificate and notarization, macOS Gatekeeper will show a warning the first time you open an unsigned build (right-click → Open bypasses this once).
 
+## QGIS plugin
+
+A companion QGIS plugin lives in [`qgis-plugin/`](qgis-plugin/), sharing its GPX-combining and Strava logic with the desktop app via [`core/`](core/). It lets you load GPX tracks as styled QGIS layers (with an OpenStreetMap basemap and directional arrows), import Strava activities, and combine/export — without leaving QGIS.
+
+**Status: beta, tested on macOS only so far** — the code is platform-independent Python/Qt/QGIS APIs, but Windows/Linux haven't been verified yet. Not yet packaged as an installable `.zip` or published to the official QGIS plugin repository; for now it's set up via symlinks for local development/testing:
+
+```bash
+# From this repo, inside qgis-plugin/: link core/ in so it's reachable
+# from inside the plugin folder (QGIS only ever sees qgis-plugin/ in isolation)
+cd qgis-plugin
+ln -s ../core core
+
+# Then symlink the whole qgis-plugin/ folder into your QGIS profile's plugins folder:
+#   macOS:   ~/Library/Application Support/QGIS/QGIS3/profiles/default/python/plugins/
+#   Windows: %APPDATA%\QGIS\QGIS3\profiles\default\python\plugins\ (needs Developer Mode
+#            enabled, or an elevated command prompt, to create symlinks)
+#   Linux:   ~/.local/share/QGIS/QGIS3/profiles/default/python/plugins/
+ln -s "$(pwd)" "<profile plugins folder>/gpx_combiner"
+```
+
+Then in QGIS: **Plugins → Manage and Install Plugins → Installed**, enable "GPX Combiner" (check "Show also experimental plugins" in Settings if it doesn't appear).
+
+See [`CHANGELOG.md`](CHANGELOG.md) for what's implemented so far.
+
+## Changelog
+
+See [`CHANGELOG.md`](CHANGELOG.md) for the full version history of both the desktop app and the QGIS plugin.
+
 ---
 
-<p align="center"><sub>Version 3.5.1</sub></p>
+<p align="center"><sub>Version 3.6.3</sub></p>

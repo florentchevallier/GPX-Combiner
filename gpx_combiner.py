@@ -84,7 +84,7 @@ def resource_path(filename):
     script."""
     base = getattr(sys, "_MEIPASS", SCRIPT_DIR)
     return os.path.join(base, filename)
-APP_VERSION = "3.6"
+APP_VERSION = "3.6.3"
 CONFIG_PATH = os.path.join(SCRIPT_DIR, "strava_config.json")
 APP_CONFIG_PATH = os.path.join(SCRIPT_DIR, "app_config.json")  # app-wide settings (language...), kept
                                                                  # separate from Strava credentials
@@ -120,6 +120,16 @@ EXT_FIELD_STRIP_RE = {
 }
 EMPTY_TPX_RE = re.compile(r"<gpxtpx:TrackPointExtension>\s*</gpxtpx:TrackPointExtension>", re.I)
 EMPTY_EXT_RE = re.compile(r"<extensions>\s*</extensions>", re.I)
+
+# Some devices (e.g. COROS, via the cluetrust "gpxdata" extension schema)
+# embed a per-point CUMULATIVE distance-from-start-of-this-recording value.
+# That's fine within a single original file, but becomes actively misleading
+# once two separately-recorded files are spliced together (each one's
+# counter restarts at 0) — unlike gpxdata:speed or gpxdata:hr, which stay
+# valid per-point measurements regardless of splicing, so those are left
+# alone. Always stripped when combining, not tied to the HR/cadence/power/
+# temp checkboxes (which only cover the gpxtpx:/power Garmin-style schema).
+GPXDATA_DISTANCE_RE = re.compile(r"<gpxdata:distance>.*?</gpxdata:distance>", re.I | re.S)
 
 OSM_TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
 OSM_TILE_SIZE = 256
@@ -720,11 +730,14 @@ def detect_extension_fields(content):
 
 def strip_extension_fields(content, include):
     """Remove the extension tags for any field where include[field] is False,
-    then clean up any now-empty <gpxtpx:TrackPointExtension>/<extensions>
-    wrapper tags left behind."""
+    always remove gpxdata:distance (see GPXDATA_DISTANCE_RE above — it's not
+    tied to the checkboxes since it's a different device schema and always
+    wrong once combined), then clean up any now-empty
+    <gpxtpx:TrackPointExtension>/<extensions> wrapper tags left behind."""
     for key, rx in EXT_FIELD_STRIP_RE.items():
         if not include.get(key, True):
             content = rx.sub("", content)
+    content = GPXDATA_DISTANCE_RE.sub("", content)
     content = EMPTY_TPX_RE.sub("", content)
     content = EMPTY_EXT_RE.sub("", content)
     return content
@@ -1400,8 +1413,6 @@ class StravaImportWindow(tk.Toplevel):
 
         if saved_paths:
             self.master_app.add_files_from_paths(saved_paths)
-            messagebox.showinfo(self.t("download_done_title"),
-                                 self.t("download_done_body").format(n=len(saved_paths)), parent=self)
         self.destroy()
 
 
@@ -2078,7 +2089,7 @@ class GpxCombinerApp:
             messagebox.showerror(self.t("err_nothing_title"), self.t("err_nothing_body"))
             return
 
-        combined = base_content[:insert_pos] + "".join(extra_segments) + base_content[insert_pos:]
+        combined = base_content[:insert_pos] + "\n" + "\n".join(extra_segments) + base_content[insert_pos:]
 
         save_path = filedialog.asksaveasfilename(
             title=self.t("save_title"), defaultextension=".gpx",

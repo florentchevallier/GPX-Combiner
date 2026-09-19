@@ -1,0 +1,13 @@
+[general]
+name=GPX Combiner
+qgisMinimumVersion=3.16
+description=Combine GPX tracks and import Strava activities without leaving QGIS.
+version=0.2.0-beta
+author=Florent Chevallier
+email=florentchevallier@users.noreply.github.com
+about=Combine multiple GPX files chronologically (with optional HR/cadence/power/temperature data), load them as styled QGIS layers on an OSM basemap, and import activities directly from Strava. Tested on macOS; Windows/Linux should work (pure-Python core + standard QGIS/Qt APIs) but haven't been verified yet — please report issues.
+tracker=https://github.com/florentchevallier/GPX-Combiner/issues
+repository=https://github.com/florentchevallier/GPX-Combiner
+category=Vector
+icon=icon.png
+experimental=True
