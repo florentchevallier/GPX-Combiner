@@ -34,6 +34,7 @@ import time
 import math
 import socket
 import threading
+import uuid
 import calendar as cal_module
 import webbrowser
 import urllib.request
@@ -62,7 +63,7 @@ from datetime import datetime, timedelta, timezone, date
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, messagebox, simpledialog, ttk
 
 # Drag-and-drop is not built into stdlib Tkinter — it needs the small
 # third-party "tkinterdnd2" package (pip install tkinterdnd2). The app
@@ -84,7 +85,7 @@ def resource_path(filename):
     script."""
     base = getattr(sys, "_MEIPASS", SCRIPT_DIR)
     return os.path.join(base, filename)
-APP_VERSION = "3.6.3"
+APP_VERSION = "3.7.3"
 CONFIG_PATH = os.path.join(SCRIPT_DIR, "strava_config.json")
 APP_CONFIG_PATH = os.path.join(SCRIPT_DIR, "app_config.json")  # app-wide settings (language...), kept
                                                                  # separate from Strava credentials
@@ -166,6 +167,23 @@ TR = {
         "cancel_btn": "Annuler",
         "dnd_hint": "Astuce : vous pouvez aussi glisser-déposer des fichiers GPX ici.",
         "include_fields_label": "Inclure dans l'export :",
+        "upload_btn": "Envoyer sur Strava…",
+        "upload_no_file_body": "Combine d'abord des fichiers pour obtenir un GPX à envoyer.",
+        "open_originals_title": "Ouvrir les activités d'origine ?",
+        "open_originals_body": "{n} des fichiers combinés proviennent d'activités Strava déjà existantes. "
+                                "Pour éviter une erreur de doublon, tu peux les supprimer sur Strava avant "
+                                "l'envoi (récupérables pendant 30 jours en cas d'erreur). Ouvrir chacune dans "
+                                "un nouvel onglet du navigateur ?",
+        "upload_name_title": "Nom de l'activité",
+        "upload_name_prompt": "Nom à donner à l'activité sur Strava :",
+        "upload_type_prompt": "Type d'activité :",
+        "upload_progress_title": "Envoi vers Strava",
+        "upload_status_uploading": "Envoi du fichier…",
+        "upload_status_processing": "Traitement par Strava…",
+        "upload_status_done": "Activité créée avec succès.",
+        "upload_status_error": "Échec de l'envoi :\n{err}",
+        "upload_status_timeout": "Strava met anormalement longtemps à traiter le fichier — réessaie plus tard.",
+        "upload_view_on_strava": "Voir sur Strava",
         "strava_settings_btn": "⚙ Réglages Strava",
         "strava_settings_title": "Réglages Strava",
         "strava_not_configured": "Aucun identifiant Strava enregistré sur cet ordinateur.",
@@ -226,6 +244,7 @@ TR = {
         "col_distance": "Distance",
         "col_duration": "Durée",
         "col_city": "Commune",
+        "col_gear": "Matériel",
         "per_page_label": "Par page :",
         "download_selected": "Télécharger la sélection ({n})",
         "loading": "Chargement…",
@@ -270,6 +289,23 @@ TR = {
         "cancel_btn": "Cancel",
         "dnd_hint": "Tip: you can also drag and drop GPX files here.",
         "include_fields_label": "Include in export:",
+        "upload_btn": "Upload to Strava…",
+        "upload_no_file_body": "Combine some files first to get a GPX to upload.",
+        "open_originals_title": "Open the original activities?",
+        "open_originals_body": "{n} of the combined files come from existing Strava activities. To avoid a "
+                                "duplicate-activity error, you may want to delete them on Strava before "
+                                "uploading (recoverable for 30 days if you change your mind). Open each one "
+                                "in a new browser tab?",
+        "upload_name_title": "Activity name",
+        "upload_name_prompt": "Name to give this activity on Strava:",
+        "upload_type_prompt": "Activity type:",
+        "upload_progress_title": "Uploading to Strava",
+        "upload_status_uploading": "Uploading the file…",
+        "upload_status_processing": "Strava is processing it…",
+        "upload_status_done": "Activity created successfully.",
+        "upload_status_error": "Upload failed:\n{err}",
+        "upload_status_timeout": "Strava is taking unusually long to process this — try again later.",
+        "upload_view_on_strava": "View on Strava",
         "strava_settings_btn": "⚙ Strava settings",
         "strava_settings_title": "Strava settings",
         "strava_not_configured": "No Strava credentials saved on this computer.",
@@ -328,6 +364,7 @@ TR = {
         "col_distance": "Distance",
         "col_duration": "Duration",
         "col_city": "Location",
+        "col_gear": "Gear",
         "per_page_label": "Per page:",
         "download_selected": "Download selection ({n})",
         "loading": "Loading…",
@@ -372,6 +409,23 @@ TR = {
         "cancel_btn": "Cancelar",
         "dnd_hint": "Consejo: también puedes arrastrar y soltar archivos GPX aquí.",
         "include_fields_label": "Incluir en la exportación:",
+        "upload_btn": "Subir a Strava…",
+        "upload_no_file_body": "Combina primero algunos archivos para obtener un GPX que subir.",
+        "open_originals_title": "¿Abrir las actividades originales?",
+        "open_originals_body": "{n} de los archivos combinados provienen de actividades de Strava ya "
+                                "existentes. Para evitar un error de actividad duplicada, puedes eliminarlas "
+                                "en Strava antes de subir (recuperables durante 30 días si cambias de "
+                                "opinión). ¿Abrir cada una en una nueva pestaña del navegador?",
+        "upload_name_title": "Nombre de la actividad",
+        "upload_name_prompt": "Nombre para esta actividad en Strava:",
+        "upload_type_prompt": "Tipo de actividad:",
+        "upload_progress_title": "Subiendo a Strava",
+        "upload_status_uploading": "Subiendo el archivo…",
+        "upload_status_processing": "Strava lo está procesando…",
+        "upload_status_done": "Actividad creada con éxito.",
+        "upload_status_error": "Error al subir:\n{err}",
+        "upload_status_timeout": "Strava está tardando más de lo normal en procesar esto — inténtalo más tarde.",
+        "upload_view_on_strava": "Ver en Strava",
         "strava_settings_btn": "⚙ Ajustes de Strava",
         "strava_settings_title": "Ajustes de Strava",
         "strava_not_configured": "No hay credenciales de Strava guardadas en este ordenador.",
@@ -431,6 +485,7 @@ TR = {
         "col_distance": "Distancia",
         "col_duration": "Duración",
         "col_city": "Localidad",
+        "col_gear": "Equipo",
         "per_page_label": "Por página:",
         "download_selected": "Descargar selección ({n})",
         "loading": "Cargando…",
@@ -475,6 +530,23 @@ TR = {
         "cancel_btn": "Abbrechen",
         "dnd_hint": "Tipp: Du kannst GPX-Dateien auch per Drag & Drop hierher ziehen.",
         "include_fields_label": "In den Export einschließen:",
+        "upload_btn": "Zu Strava hochladen…",
+        "upload_no_file_body": "Kombiniere zuerst einige Dateien, um eine GPX-Datei zum Hochladen zu erhalten.",
+        "open_originals_title": "Ursprüngliche Aktivitäten öffnen?",
+        "open_originals_body": "{n} der kombinierten Dateien stammen aus bereits vorhandenen "
+                                "Strava-Aktivitäten. Um einen Duplikat-Fehler zu vermeiden, kannst du sie vor "
+                                "dem Hochladen auf Strava löschen (bei Bedarf 30 Tage lang wiederherstellbar). "
+                                "Jede in einem neuen Browser-Tab öffnen?",
+        "upload_name_title": "Name der Aktivität",
+        "upload_name_prompt": "Name für diese Aktivität auf Strava:",
+        "upload_type_prompt": "Aktivitätstyp:",
+        "upload_progress_title": "Hochladen zu Strava",
+        "upload_status_uploading": "Datei wird hochgeladen…",
+        "upload_status_processing": "Strava verarbeitet die Datei…",
+        "upload_status_done": "Aktivität erfolgreich erstellt.",
+        "upload_status_error": "Hochladen fehlgeschlagen:\n{err}",
+        "upload_status_timeout": "Strava braucht ungewöhnlich lange — versuche es später erneut.",
+        "upload_view_on_strava": "Auf Strava ansehen",
         "strava_settings_btn": "⚙ Strava-Einstellungen",
         "strava_settings_title": "Strava-Einstellungen",
         "strava_not_configured": "Keine Strava-Zugangsdaten auf diesem Computer gespeichert.",
@@ -534,6 +606,7 @@ TR = {
         "col_distance": "Distanz",
         "col_duration": "Dauer",
         "col_city": "Ort",
+        "col_gear": "Ausrüstung",
         "per_page_label": "Pro Seite:",
         "download_selected": "Auswahl herunterladen ({n})",
         "loading": "Lädt…",
@@ -560,7 +633,7 @@ TR = {
     },
 }
 
-LANGUAGE_NAMES = {"fr": "🇧🇪 Français", "en": "🏴󠁧󠁢󠁥󠁮󠁧󠁿 English", "es": "🇲🇽 Español", "de": "🇦🇹 Deutsch"}
+LANGUAGE_NAMES = {"fr": "Français", "en": "English", "es": "Español", "de": "Deutsch"}
 
 
 # ----------------------------------------------------------------------------
@@ -855,11 +928,17 @@ def escape_xml(s):
 
 # Strava's own GPX exports use these lowercase values for <type>. Falls back
 # to the lowercased raw Strava type for anything not in this table.
+# Confirmed directly against real Strava-exported GPX files (2026-09-23):
+# gravel_biking, ebikeride, mountain_biking, EMountainBikeRide (yes, mixed
+# case — that inconsistency is Strava's own, not a typo here), trail_running.
 STRAVA_TYPE_TO_GPX_TYPE = {
-    "Ride": "cycling", "VirtualRide": "cycling", "EBikeRide": "cycling",
-    "MountainBikeRide": "cycling", "GravelRide": "cycling", "Velomobile": "cycling",
-    "Handcycle": "cycling",
-    "Run": "running", "VirtualRun": "running", "TrailRun": "running",
+    "Ride": "cycling", "VirtualRide": "cycling", "Velomobile": "cycling", "Handcycle": "cycling",
+    "MountainBikeRide": "mountain_biking",
+    "GravelRide": "gravel_biking",
+    "EBikeRide": "ebikeride",
+    "EMountainBikeRide": "EMountainBikeRide",
+    "Run": "running", "VirtualRun": "running",
+    "TrailRun": "trail_running",
     "Walk": "walking", "Hike": "hiking",
     "Swim": "swimming",
     "AlpineSki": "skiing", "BackcountrySki": "skiing", "NordicSki": "skiing", "RollerSki": "skiing",
@@ -877,6 +956,41 @@ STRAVA_TYPE_TO_GPX_TYPE = {
 def strava_activity_gpx_type(activity):
     raw = activity.get("type") or ""
     return STRAVA_TYPE_TO_GPX_TYPE.get(raw, raw.lower()) if raw else ""
+
+
+# For the upload dropdown: Strava's own type-picker (as of this writing)
+# leads with cycling/running/walking variants, then winter sports, before
+# the long tail of less common activities — this mirrors that ordering for
+# the entries we have equivalents for, then appends the rest of our table
+# alphabetically. Strava's /uploads endpoint no longer accepts a separate
+# activity_type form field (checked against the current official API
+# reference) — Strava derives the type by reading the GPX file's own
+# <type> tag, so choosing a type here means rewriting that tag before
+# upload, not adding a request parameter.
+_TYPE_PRIORITY = [
+    "cycling", "walking", "running", "trail_running", "gravel_biking", "mountain_biking",
+    "swimming", "hiking", "ebikeride", "EMountainBikeRide", "skiing", "workout",
+]
+GPX_TYPE_CHOICES = _TYPE_PRIORITY + sorted(set(STRAVA_TYPE_TO_GPX_TYPE.values()) - set(_TYPE_PRIORITY))
+
+TYPE_TAG_RE = re.compile(r"<type>(.*?)</type>", re.I | re.S)
+
+
+def read_gpx_type(content):
+    m = TYPE_TAG_RE.search(content)
+    return m.group(1).strip() if m else ""
+
+
+def set_gpx_type(content, new_type):
+    """Replaces the <type> tag's content, or inserts one right after
+    </name> if the file doesn't have one yet."""
+    if TYPE_TAG_RE.search(content):
+        return TYPE_TAG_RE.sub(f"<type>{escape_xml(new_type)}</type>", content, count=1)
+    name_end = content.find("</name>")
+    if name_end == -1:
+        return content  # no <name> to anchor on — leave the file untouched
+    insert_pos = name_end + len("</name>")
+    return content[:insert_pos] + f"\n    <type>{escape_xml(new_type)}</type>" + content[insert_pos:]
 
 
 def sanitize_filename(name):
@@ -989,7 +1103,7 @@ class StravaClient:
             "client_id": self.config["client_id"],
             "redirect_uri": REDIRECT_URI,
             "response_type": "code",
-            "scope": "activity:read_all",
+            "scope": "activity:read_all,activity:write",
         }
         url = f"{self.AUTHORIZE_URL}?{urllib.parse.urlencode(params)}"
 
@@ -1088,6 +1202,54 @@ class StravaClient:
             {"keys": "latlng,altitude,time,heartrate,cadence,watts,temp", "key_by_type": "true"},
         )
 
+    def get_gear(self, gear_id):
+        return self._get(f"/gear/{gear_id}")
+
+    # -- upload (requires the activity:write scope — see authorize_interactive) --
+    def upload_gpx(self, filepath, name=None, description=None):
+        """Uploads a GPX file as a new Strava activity. Returns the Strava
+        upload id (NOT the final activity id — Strava processes uploads
+        asynchronously; poll check_upload() with the returned id until it
+        reports an activity_id or an error)."""
+        self._ensure_fresh_token()
+        boundary = uuid.uuid4().hex
+        fields = {"data_type": "gpx"}
+        if name:
+            fields["name"] = name
+        if description:
+            fields["description"] = description
+
+        with open(filepath, "rb") as f:
+            file_bytes = f.read()
+
+        parts = []
+        for key, value in fields.items():
+            parts.append(
+                f'--{boundary}\r\nContent-Disposition: form-data; name="{key}"\r\n\r\n{value}\r\n'.encode()
+            )
+        filename = os.path.basename(filepath)
+        parts.append(
+            (f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="{filename}"\r\n'
+             f'Content-Type: application/gpx+xml\r\n\r\n').encode() + file_bytes + b"\r\n"
+        )
+        parts.append(f"--{boundary}--\r\n".encode())
+        body = b"".join(parts)
+
+        req = urllib.request.Request(f"{self.API_BASE}/uploads", data=body, method="POST")
+        req.add_header("Authorization", f"Bearer {self.config['access_token']}")
+        req.add_header("Content-Type", f"multipart/form-data; boundary={boundary}")
+        try:
+            with urlopen(req, timeout=60) as resp:
+                payload = json.loads(resp.read().decode())
+        except urllib.error.HTTPError as e:
+            raise StravaAPIError(f"{e.code} {e.read().decode()}")
+        return payload["id"]
+
+    def check_upload(self, upload_id):
+        """One status check — {'status': ..., 'activity_id': ... or None,
+        'error': ... or None}. Caller is responsible for polling/pacing."""
+        return self._get(f"/uploads/{upload_id}")
+
 
 # ----------------------------------------------------------------------------
 # Strava import window
@@ -1098,15 +1260,16 @@ class StravaImportWindow(tk.Toplevel):
     # header row and every activity row, so bold header text and regular row
     # text line up exactly regardless of the font's per-character width.
     COL_CHECKBOX_PX = 28
-    COL_WIDTHS_PX = {"date": 100, "name": 190, "type": 80, "distance": 90, "duration": 90, "city": 130}
+    COL_WIDTHS_PX = {"date": 100, "name": 190, "type": 80, "distance": 90, "duration": 90,
+                      "city": 130, "gear": 120}
 
     def __init__(self, master_app, client):
         super().__init__(master_app.root)
         self.master_app = master_app
         self.t = master_app.t
         self.title(self.t("strava_title"))
-        self.geometry("820x520")
-        self.minsize(780, 420)
+        self.geometry("940x520")
+        self.minsize(900, 420)
 
         self.client = client
         self.current_page = 1
@@ -1156,7 +1319,8 @@ class StravaImportWindow(tk.Toplevel):
         tk.Frame(header, width=self.COL_CHECKBOX_PX, height=1).pack(side="left")
         for key, text in [("date", self.t("col_date")), ("name", self.t("col_name")),
                            ("type", self.t("col_type")), ("distance", self.t("col_distance")),
-                           ("duration", self.t("col_duration")), ("city", self.t("col_city"))]:
+                           ("duration", self.t("col_duration")), ("city", self.t("col_city")),
+                           ("gear", self.t("col_gear"))]:
             self._make_cell(header, self.COL_WIDTHS_PX[key],
                              text=text, font=("TkDefaultFont", 9, "bold"))
 
@@ -1311,6 +1475,10 @@ class StravaImportWindow(tk.Toplevel):
         # clears the labels' text.
         self._city_vars = {}
         city_vars = self._city_vars
+        self._gear_vars = {}
+        gear_vars = self._gear_vars
+        if not hasattr(self, "_gear_name_cache"):
+            self._gear_name_cache = {}  # gear_id -> name, shared across pages/renders
 
         for a in activities:
             row = ttk.Frame(self.rows_frame)
@@ -1350,6 +1518,10 @@ class StravaImportWindow(tk.Toplevel):
             self._make_cell(row, self.COL_WIDTHS_PX["city"], textvariable=city_var)
             city_vars[a["id"]] = city_var
 
+            gear_var = tk.StringVar(value="" if not a.get("gear_id") else "…")
+            self._make_cell(row, self.COL_WIDTHS_PX["gear"], textvariable=gear_var)
+            gear_vars[a["id"]] = gear_var
+
         self._update_download_label()
 
         # Resolve city names in the background (Strava rarely fills location_city,
@@ -1357,6 +1529,14 @@ class StravaImportWindow(tk.Toplevel):
         threading.Thread(
             target=self._fill_cities_worker,
             args=(activities, city_vars, generation),
+            daemon=True,
+        ).start()
+        # Same idea for gear: the activity list only gives a gear_id, so the
+        # human-readable name needs one extra API call per *unique* gear_id
+        # (cached — the same bike/shoe recurs across many activities).
+        threading.Thread(
+            target=self._fill_gear_worker,
+            args=(activities, gear_vars, generation),
             daemon=True,
         ).start()
 
@@ -1378,6 +1558,28 @@ class StravaImportWindow(tk.Toplevel):
             city_var.set(city_text)
         except tk.TclError:
             pass  # window/row was closed/rebuilt in the meantime
+
+    def _fill_gear_worker(self, activities, gear_vars, generation):
+        for a in activities:
+            gear_id = a.get("gear_id")
+            if not gear_id:
+                continue
+            name = self._gear_name_cache.get(gear_id)
+            if name is None:
+                try:
+                    name = self.client.get_gear(gear_id).get("name") or gear_id
+                except (StravaAPIError, StravaAuthError):
+                    name = gear_id  # fall back to the raw id rather than leaving "…" forever
+                self._gear_name_cache[gear_id] = name
+            self.after(0, self._set_gear_label, gear_vars.get(a["id"]), name, generation)
+
+    def _set_gear_label(self, gear_var, name, generation):
+        if generation != self._render_generation or gear_var is None:
+            return
+        try:
+            gear_var.set(name)
+        except tk.TclError:
+            pass
 
     def _update_download_label(self):
         self.download_btn.config(text=self.t("download_selected").format(n=len(self.selected_ids)))
@@ -1830,6 +2032,136 @@ class StravaSettingsWindow(tk.Toplevel):
 
 
 # ----------------------------------------------------------------------------
+# Upload progress window
+# ----------------------------------------------------------------------------
+
+class UploadOptionsDialog(tk.Toplevel):
+    """Asks for the activity name and its Strava type together, the type
+    pre-selected from whatever the combined GPX's own <type> tag already
+    says. Sets .result to (name, gpx_type) on OK, leaves it None on Cancel."""
+
+    def __init__(self, master_app, default_name, default_type):
+        super().__init__(master_app.root)
+        self.t = master_app.t
+        self.result = None
+        self.title(self.t("upload_name_title"))
+        self.resizable(False, False)
+        self.transient(master_app.root)
+
+        frame = ttk.Frame(self, padding=16)
+        frame.pack(fill="both", expand=True)
+
+        form = ttk.Frame(frame)
+        form.pack(fill="x")
+        form.columnconfigure(1, weight=1)
+
+        ttk.Label(form, text=self.t("upload_name_prompt")).grid(row=0, column=0, sticky="w", pady=4)
+        self.name_var = tk.StringVar(value=default_name)
+        ttk.Entry(form, textvariable=self.name_var, width=30).grid(row=0, column=1, sticky="ew", pady=4)
+
+        ttk.Label(form, text=self.t("upload_type_prompt")).grid(row=1, column=0, sticky="w", pady=4)
+        self.type_var = tk.StringVar(value=default_type if default_type in GPX_TYPE_CHOICES else "")
+        type_combo = ttk.Combobox(form, textvariable=self.type_var, values=GPX_TYPE_CHOICES,
+                                   state="readonly", width=27)
+        type_combo.grid(row=1, column=1, sticky="ew", pady=4)
+
+        btns = ttk.Frame(frame)
+        btns.pack(fill="x", pady=(14, 0))
+        ttk.Button(btns, text=self.t("cancel_btn"), command=self._on_cancel).pack(side="right")
+        ttk.Button(btns, text=self.t("ok_btn"), command=self._on_ok).pack(side="right", padx=(0, 6))
+
+        self.protocol("WM_DELETE_WINDOW", self._on_cancel)
+        self.bind("<Return>", lambda e: self._on_ok())
+        self.bind("<Escape>", lambda e: self._on_cancel())
+        self.grab_set()
+
+    def _on_ok(self):
+        self.result = (self.name_var.get().strip(), self.type_var.get().strip())
+        self.grab_release()
+        self.destroy()
+
+    def _on_cancel(self):
+        self.result = None
+        self.grab_release()
+        self.destroy()
+
+
+class UploadProgressWindow(tk.Toplevel):
+    """Uploads a GPX file to Strava in a background thread, polling
+    check_upload() until Strava finishes processing it (or reports an
+    error, e.g. a duplicate of an existing activity)."""
+
+    def __init__(self, master_app, client, filepath, name):
+        super().__init__(master_app.root)
+        self.master_app = master_app
+        self.t = master_app.t
+        self.title(self.t("upload_progress_title"))
+        self.resizable(False, False)
+        self.protocol("WM_DELETE_WINDOW", lambda: None)  # ignore close while uploading
+
+        frame = ttk.Frame(self, padding=16)
+        frame.pack()
+        self.status_var = tk.StringVar(value=self.t("upload_status_uploading"))
+        ttk.Label(frame, textvariable=self.status_var, wraplength=320, justify="left").pack()
+
+        btn_row = ttk.Frame(frame)
+        btn_row.pack(pady=(14, 0))
+        self.view_btn = ttk.Button(btn_row, text=self.t("upload_view_on_strava"), command=self._open_activity)
+        self.close_btn = ttk.Button(btn_row, text=self.t("close"), command=self._close, state="disabled")
+        self.close_btn.pack(side="right")
+        self._activity_id = None
+
+        threading.Thread(target=self._run, args=(client, filepath, name), daemon=True).start()
+
+    def _run(self, client, filepath, name):
+        try:
+            upload_id = client.upload_gpx(filepath, name=name)
+        except (StravaAPIError, StravaAuthError, OSError) as e:
+            self.after(0, self._on_error, str(e))
+            return
+
+        deadline = time.time() + 120
+        while time.time() < deadline:
+            time.sleep(2)
+            try:
+                status = client.check_upload(upload_id)
+            except (StravaAPIError, StravaAuthError) as e:
+                self.after(0, self._on_error, str(e))
+                return
+            if status.get("error"):
+                self.after(0, self._on_error, status["error"])
+                return
+            if status.get("activity_id"):
+                self.after(0, self._on_success, status["activity_id"])
+                return
+            self.after(0, self._on_progress, status.get("status", ""))
+
+        self.after(0, self._on_error, self.t("upload_status_timeout"))
+
+    def _on_progress(self, status_text):
+        self.status_var.set(status_text or self.t("upload_status_processing"))
+
+    def _on_success(self, activity_id):
+        self._activity_id = activity_id
+        self.status_var.set(self.t("upload_status_done"))
+        self.view_btn.pack(side="left")
+        self.close_btn.state(["!disabled"])
+        self.protocol("WM_DELETE_WINDOW", self._close)
+
+    def _on_error(self, err):
+        self.status_var.set(self.t("upload_status_error").format(err=err))
+        self.close_btn.state(["!disabled"])
+        self.protocol("WM_DELETE_WINDOW", self._close)
+
+    def _open_activity(self):
+        if self._activity_id:
+            webbrowser.open_new_tab(f"https://www.strava.com/activities/{self._activity_id}/overview")
+
+    def _close(self):
+        self.destroy()
+
+
+# ----------------------------------------------------------------------------
 # Main app
 # ----------------------------------------------------------------------------
 
@@ -1949,6 +2281,9 @@ class GpxCombinerApp:
         self.btn_combine = ttk.Button(bottom, command=self.combine_and_save)
         self.btn_combine.pack(anchor="e", pady=(8, 0))
 
+        self.btn_upload = ttk.Button(bottom, command=self.upload_to_strava, state="disabled")
+        self.btn_upload.pack(anchor="e", pady=(4, 0))
+
     def _on_language_change(self, event=None):
         name_to_code = {v: k for k, v in LANGUAGE_NAMES.items()}
         self.lang = name_to_code[self.lang_combo.get()]
@@ -1967,6 +2302,7 @@ class GpxCombinerApp:
         self.lang_label.config(text=self.t("language"))
         self.order_label.config(text=self.t("order_label"))
         self.btn_combine.config(text=self.t("combine_save"))
+        self.btn_upload.config(text=self.t("upload_btn"))
         self.dnd_hint_label.config(text=self.t("dnd_hint") if DND_AVAILABLE else "")
         self.include_fields_label.config(text=self.t("include_fields_label"))
         self._refresh_status()
@@ -2021,12 +2357,15 @@ class GpxCombinerApp:
         for i, f in enumerate(self.files, start=1):
             label = f["sort_key"] or self.t("unknown_time")
             line = f"{i}. {label}  —  {f['path']}"
+            gpx_type = read_gpx_type(f["content"])
             badges = "  ".join(f"{EXTENSION_FIELD_LABELS[k]} ✅"
                                 for k in EXTENSION_FIELDS if f.get("ext_fields", {}).get(k))
-            if badges:
-                line += f"   |   {badges}"
+            extras = "   |   ".join(x for x in (gpx_type, badges) if x)
+            if extras:
+                line += f"   |   {extras}"
             self.listbox.insert(tk.END, line)
         self._refresh_status()
+        self.btn_upload.state(["!disabled"] if len(self.files) >= 2 else ["disabled"])
         if self._preview_window is not None and self._preview_window.winfo_exists():
             self._preview_window.reload_tracks()
 
@@ -2056,10 +2395,17 @@ class GpxCombinerApp:
         else:
             self._preview_window = MapPreviewWindow(self)
 
-    def combine_and_save(self):
+    def _build_combined_gpx(self):
+        """Builds the combined GPX text from the current self.files + the
+        include-checkboxes, without touching disk. Used by both "Combine
+        and save" (writes wherever the user chooses) and "Upload to Strava"
+        (always builds fresh into a throwaway temp file at click time, so
+        an upload can never be stale relative to whatever's currently
+        loaded). Returns None (after showing its own error dialog) on
+        failure."""
         if len(self.files) < 2:
             messagebox.showwarning(self.t("warn_notenough_title"), self.t("warn_notenough_body"))
-            return
+            return None
 
         include = {k: v.get() for k, v in self.include_field_vars.items()}
 
@@ -2070,7 +2416,7 @@ class GpxCombinerApp:
         if idx == -1:
             messagebox.showerror(self.t("err_base_title"),
                                   self.t("err_base_body").format(path=base["path"]))
-            return
+            return None
         insert_pos = idx + len(marker)
 
         extra_segments, skipped = [], []
@@ -2087,9 +2433,14 @@ class GpxCombinerApp:
 
         if not extra_segments:
             messagebox.showerror(self.t("err_nothing_title"), self.t("err_nothing_body"))
-            return
+            return None
 
-        combined = base_content[:insert_pos] + "\n" + "\n".join(extra_segments) + base_content[insert_pos:]
+        return base_content[:insert_pos] + "\n" + "\n".join(extra_segments) + base_content[insert_pos:]
+
+    def combine_and_save(self):
+        combined = self._build_combined_gpx()
+        if combined is None:
+            return
 
         save_path = filedialog.asksaveasfilename(
             title=self.t("save_title"), defaultextension=".gpx",
@@ -2106,6 +2457,64 @@ class GpxCombinerApp:
 
         messagebox.showinfo(self.t("done_title"), self.t("done_body").format(path=save_path))
         self.status_var.set(self.t("status_done").format(path=save_path))
+
+    def upload_to_strava(self):
+        # Duplicate-avoidance: files this app itself downloaded from Strava
+        # are named "<name>_<activity_id>.gpx" — pull those IDs back out so
+        # we can offer to open the originals for review/deletion first
+        # (Strava's own upload dedupe would otherwise reject a re-upload of
+        # the same recording, and deleting isn't possible via the API).
+        original_ids = []
+        for f in self.files:
+            m = re.search(r"_(\d+)\.gpx$", os.path.basename(f["path"]))
+            if m:
+                original_ids.append(m.group(1))
+
+        if original_ids:
+            if messagebox.askyesno(self.t("open_originals_title"),
+                                    self.t("open_originals_body").format(n=len(original_ids))):
+                for aid in original_ids:
+                    webbrowser.open_new_tab(f"https://www.strava.com/activities/{aid}/overview")
+
+        client = self.get_strava_client()
+        if client is None:
+            return  # user cancelled the credentials dialog
+        if not client.has_token:
+            try:
+                client.authorize_interactive()
+            except StravaAuthError as e:
+                messagebox.showerror(self.t("auth_failed_title"),
+                                      self.t("auth_failed_body").format(err=e))
+                return
+
+        # Build fresh from whatever's currently loaded — never reuses a
+        # previously-saved file, so there's no way for this to upload
+        # stale/unrelated content from an earlier combine.
+        combined_content = self._build_combined_gpx()
+        if combined_content is None:
+            return
+        default_type = read_gpx_type(combined_content)
+        default_name = " + ".join(os.path.splitext(os.path.basename(f["path"]))[0] for f in self.files)
+
+        dlg = UploadOptionsDialog(self, default_name, default_type)
+        self.root.wait_window(dlg)
+        if dlg.result is None:
+            return  # cancelled
+        name, gpx_type = dlg.result
+
+        if gpx_type and gpx_type != default_type:
+            combined_content = set_gpx_type(combined_content, gpx_type)
+
+        os.makedirs(GPX_TEMP_DIR, exist_ok=True)
+        upload_path = os.path.join(GPX_TEMP_DIR, f"upload_{uuid.uuid4().hex}.gpx")
+        try:
+            with open(upload_path, "w", encoding="utf-8") as f:
+                f.write(combined_content)
+        except OSError as e:
+            messagebox.showerror(self.t("strava_title"), str(e))
+            return
+
+        UploadProgressWindow(self, client, upload_path, name)
 
 
 def main():

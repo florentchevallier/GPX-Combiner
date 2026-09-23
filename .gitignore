@@ -8,3 +8,5 @@ app_config.json
 /dist
 /Releases
 __pycache__/
+/.ipynb_checkpoints
+GPX files for test/combined.gpx

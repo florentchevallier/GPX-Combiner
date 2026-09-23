@@ -1,4 +1,6 @@
 import os
+import re
+import webbrowser
 
 from qgis.PyQt.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QListWidget, QPushButton,
@@ -18,6 +20,7 @@ from gpx_core import (
     extract_sort_key, detect_extension_fields, combine_gpx_files,
     EXTENSION_FIELDS, EXTENSION_FIELD_LABELS, TRACK_COLOR_PALETTE,
 )
+from strava_client import StravaClient, StravaAuthError, read_gpx_type
 
 OSM_XYZ_NAME = "OpenStreetMap"
 OSM_XYZ_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -82,6 +85,11 @@ class GpxCombinerDialog(QDialog):
         combine_btn.clicked.connect(self.combine_and_save)
         layout.addWidget(combine_btn)
 
+        self.upload_btn = QPushButton("Upload to Strava…")
+        self.upload_btn.clicked.connect(self.upload_to_strava)
+        self.upload_btn.setEnabled(False)
+        layout.addWidget(self.upload_btn)
+
     # -- window focus --
     def _bring_to_front(self):
         """macOS/Qt quirk: after a native file dialog closes, this window
@@ -122,11 +130,14 @@ class GpxCombinerDialog(QDialog):
         self.list_widget.clear()
         for i, f in enumerate(self.files, start=1):
             ext = detect_extension_fields(f["content"])
+            gpx_type = read_gpx_type(f["content"])
             badges = "  ".join(EXTENSION_FIELD_LABELS[k] for k in EXTENSION_FIELDS if ext.get(k))
+            extras = "   |   ".join(x for x in (gpx_type, badges) if x)
             label = f"{i}. {f['sort_key']}  —  {os.path.basename(f['path'])}"
-            if badges:
-                label += f"   |   {badges}"
+            if extras:
+                label += f"   |   {extras}"
             self.list_widget.addItem(label)
+        self.upload_btn.setEnabled(len(self.files) >= 2)
 
     def remove_selected(self):
         """Removes the selected file(s) from this list only — never deletes
@@ -311,3 +322,92 @@ class GpxCombinerDialog(QDialog):
             QMessageBox.critical(self, "GPX Combiner", f"Could not save the file:\n{e}")
             return
         QMessageBox.information(self, "GPX Combiner", f"Combined file saved:\n{save_path}")
+
+    def upload_to_strava(self):
+        from .strava_dialog import (
+            StravaCredentialsDialog, UploadOptionsDialog, UploadProgressDialog,
+            _load_strava_config, _save_strava_config,
+        )
+        from strava_client import set_gpx_type
+        import uuid
+        import tempfile
+
+        if len(self.files) < 2:
+            QMessageBox.warning(self, "GPX Combiner", "Add at least two GPX files to combine.")
+            return
+
+        # Duplicate-avoidance: files downloaded via this plugin's own Strava
+        # import are named "<name>_<activity_id>.gpx" — pull those IDs back
+        # out so we can offer to open the originals for review/deletion
+        # first (Strava's own upload dedupe would otherwise reject a
+        # re-upload of the same recording, and there's no delete endpoint).
+        original_ids = []
+        for f in self.files:
+            m = re.search(r"_(\d+)\.gpx$", os.path.basename(f["path"]))
+            if m:
+                original_ids.append(m.group(1))
+
+        if original_ids:
+            reply = QMessageBox.question(
+                self, "Open the original activities?",
+                f"{len(original_ids)} of the combined files come from existing Strava activities. "
+                "To avoid a duplicate-activity error, you may want to delete them on Strava before "
+                "uploading (recoverable for 30 days if you change your mind). Open each one in a "
+                "new browser tab?",
+                QMessageBox.Yes | QMessageBox.No)
+            if reply == QMessageBox.Yes:
+                for aid in original_ids:
+                    webbrowser.open_new_tab(f"https://www.strava.com/activities/{aid}/overview")
+
+        client = StravaClient(_load_strava_config())
+        if not client.has_credentials:
+            dlg = StravaCredentialsDialog(self)
+            if dlg.exec_() != QDialog.Accepted or dlg.result is None:
+                return
+            client.config["client_id"], client.config["client_secret"] = dlg.result
+            _save_strava_config(client.config)
+        if not client.has_token:
+            try:
+                client.authorize_interactive()
+            except StravaAuthError as e:
+                QMessageBox.critical(self, "GPX Combiner", f"Strava authorization failed:\n{e}")
+                return
+            _save_strava_config(client.config)
+
+        # Build fresh from whatever's currently loaded — never reuses a
+        # previously-saved file, so there's no way for this to upload
+        # stale/unrelated content from an earlier combine.
+        include = {k: cb.isChecked() for k, cb in self.field_checks.items()}
+        try:
+            combined_content, skipped = combine_gpx_files(self.files, include)
+        except ValueError as e:
+            QMessageBox.critical(self, "GPX Combiner", str(e))
+            return
+        if skipped:
+            QMessageBox.warning(self, "GPX Combiner", "No <trkseg> found in:\n" + "\n".join(skipped))
+
+        default_type = read_gpx_type(combined_content)
+        default_name = " + ".join(os.path.splitext(os.path.basename(f["path"]))[0] for f in self.files)
+
+        dlg = UploadOptionsDialog(self, default_name, default_type)
+        self._bring_to_front()
+        if dlg.exec_() != QDialog.Accepted:
+            return
+        name, gpx_type = dlg.name, dlg.gpx_type
+
+        if gpx_type and gpx_type != default_type:
+            combined_content = set_gpx_type(combined_content, gpx_type)
+
+        temp_dir = os.path.join(tempfile.gettempdir(), "gpx_combiner_strava")
+        os.makedirs(temp_dir, exist_ok=True)
+        upload_path = os.path.join(temp_dir, f"upload_{uuid.uuid4().hex}.gpx")
+        try:
+            with open(upload_path, "w", encoding="utf-8") as fh:
+                fh.write(combined_content)
+        except OSError as e:
+            QMessageBox.critical(self, "GPX Combiner", str(e))
+            return
+
+        dlg = UploadProgressDialog(self, client, upload_path, name)
+        dlg.exec_()
+        _save_strava_config(client.config)

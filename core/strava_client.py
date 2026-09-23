@@ -12,11 +12,13 @@ desktop app, QgsSettings for the QGIS plugin), pass it in, and after any
 call that may have changed tokens, save `client.config` back out.
 """
 
+import os
 import re
 import json
 import time
 import socket
 import threading
+import uuid
 import webbrowser
 import urllib.request
 import urllib.parse
@@ -104,7 +106,7 @@ class StravaClient:
             "client_id": self.config["client_id"],
             "redirect_uri": REDIRECT_URI,
             "response_type": "code",
-            "scope": "activity:read_all",
+            "scope": "activity:read_all,activity:write",
         }
         url = f"{self.AUTHORIZE_URL}?{urllib.parse.urlencode(params)}"
 
@@ -205,6 +207,54 @@ class StravaClient:
             {"keys": "latlng,altitude,time,heartrate,cadence,watts,temp", "key_by_type": "true"},
         )
 
+    def get_gear(self, gear_id):
+        return self._get(f"/gear/{gear_id}")
+
+    # -- upload (requires the activity:write scope — see authorize_interactive) --
+    def upload_gpx(self, filepath, name=None, description=None):
+        """Uploads a GPX file as a new Strava activity. Returns the Strava
+        upload id (NOT the final activity id — Strava processes uploads
+        asynchronously; poll check_upload() with the returned id until it
+        reports an activity_id or an error)."""
+        self._ensure_fresh_token()
+        boundary = uuid.uuid4().hex
+        fields = {"data_type": "gpx"}
+        if name:
+            fields["name"] = name
+        if description:
+            fields["description"] = description
+
+        with open(filepath, "rb") as f:
+            file_bytes = f.read()
+
+        parts = []
+        for key, value in fields.items():
+            parts.append(
+                f'--{boundary}\r\nContent-Disposition: form-data; name="{key}"\r\n\r\n{value}\r\n'.encode()
+            )
+        filename = os.path.basename(filepath)
+        parts.append(
+            (f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="{filename}"\r\n'
+             f'Content-Type: application/gpx+xml\r\n\r\n').encode() + file_bytes + b"\r\n"
+        )
+        parts.append(f"--{boundary}--\r\n".encode())
+        body = b"".join(parts)
+
+        req = urllib.request.Request(f"{self.API_BASE}/uploads", data=body, method="POST")
+        req.add_header("Authorization", f"Bearer {self.config['access_token']}")
+        req.add_header("Content-Type", f"multipart/form-data; boundary={boundary}")
+        try:
+            with _urlopen(req, timeout=60) as resp:
+                payload = json.loads(resp.read().decode())
+        except urllib.error.HTTPError as e:
+            raise StravaAPIError(f"{e.code} {e.read().decode()}")
+        return payload["id"]
+
+    def check_upload(self, upload_id):
+        """One status check — {'status': ..., 'activity_id': ... or None,
+        'error': ... or None}. Caller is responsible for polling/pacing."""
+        return self._get(f"/uploads/{upload_id}")
+
 
 # ----------------------------------------------------------------------------
 # Building a GPX file from a Strava activity + its streams
@@ -212,11 +262,17 @@ class StravaClient:
 
 # Strava's own GPX exports use these lowercase values for <type>. Falls back
 # to the lowercased raw Strava type for anything not in this table.
+# Confirmed directly against real Strava-exported GPX files (2026-09-23):
+# gravel_biking, ebikeride, mountain_biking, EMountainBikeRide (yes, mixed
+# case — that inconsistency is Strava's own, not a typo here), trail_running.
 STRAVA_TYPE_TO_GPX_TYPE = {
-    "Ride": "cycling", "VirtualRide": "cycling", "EBikeRide": "cycling",
-    "MountainBikeRide": "cycling", "GravelRide": "cycling", "Velomobile": "cycling",
-    "Handcycle": "cycling",
-    "Run": "running", "VirtualRun": "running", "TrailRun": "running",
+    "Ride": "cycling", "VirtualRide": "cycling", "Velomobile": "cycling", "Handcycle": "cycling",
+    "MountainBikeRide": "mountain_biking",
+    "GravelRide": "gravel_biking",
+    "EBikeRide": "ebikeride",
+    "EMountainBikeRide": "EMountainBikeRide",
+    "Run": "running", "VirtualRun": "running",
+    "TrailRun": "trail_running",
     "Walk": "walking", "Hike": "hiking",
     "Swim": "swimming",
     "AlpineSki": "skiing", "BackcountrySki": "skiing", "NordicSki": "skiing", "RollerSki": "skiing",
@@ -234,6 +290,40 @@ STRAVA_TYPE_TO_GPX_TYPE = {
 def strava_activity_gpx_type(activity):
     raw = activity.get("type") or ""
     return STRAVA_TYPE_TO_GPX_TYPE.get(raw, raw.lower()) if raw else ""
+
+
+# For the upload dropdown: mirrors the order Strava's own type-picker uses
+# (cycling/running/walking variants, then winter sports) for the entries we
+# have equivalents for, then appends the rest of our table alphabetically.
+# Strava's /uploads endpoint no longer accepts a separate activity_type
+# form field (checked against the current official API reference) — Strava
+# derives the type by reading the GPX file's own <type> tag, so choosing a
+# type means rewriting that tag before upload, not adding a request
+# parameter.
+_TYPE_PRIORITY = [
+    "cycling", "walking", "running", "trail_running", "gravel_biking", "mountain_biking",
+    "swimming", "hiking", "ebikeride", "EMountainBikeRide", "skiing", "workout",
+]
+GPX_TYPE_CHOICES = _TYPE_PRIORITY + sorted(set(STRAVA_TYPE_TO_GPX_TYPE.values()) - set(_TYPE_PRIORITY))
+
+TYPE_TAG_RE = re.compile(r"<type>(.*?)</type>", re.I | re.S)
+
+
+def read_gpx_type(content):
+    m = TYPE_TAG_RE.search(content)
+    return m.group(1).strip() if m else ""
+
+
+def set_gpx_type(content, new_type):
+    """Replaces the <type> tag's content, or inserts one right after
+    </name> if the file doesn't have one yet."""
+    if TYPE_TAG_RE.search(content):
+        return TYPE_TAG_RE.sub(f"<type>{escape_xml(new_type)}</type>", content, count=1)
+    name_end = content.find("</name>")
+    if name_end == -1:
+        return content
+    insert_pos = name_end + len("</name>")
+    return content[:insert_pos] + f"\n    <type>{escape_xml(new_type)}</type>" + content[insert_pos:]
 
 
 def escape_xml(s):
