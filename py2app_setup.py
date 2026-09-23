@@ -26,8 +26,8 @@ OPTIONS = {
     "plist": {
         "CFBundleName": "GPX Combiner",
         "CFBundleDisplayName": "GPX Combiner",
-        "CFBundleShortVersionString": "3.6.3",
-        "CFBundleVersion": "3.6.3",
+        "CFBundleShortVersionString": "3.7.4",
+        "CFBundleVersion": "3.7.4",
         "NSHumanReadableCopyright": "",
         # Without an Apple Developer certificate + notarization, macOS
         # Gatekeeper will warn on first launch (right-click > Open bypasses

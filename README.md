@@ -35,6 +35,7 @@
 - [Privacy](#privacy)
 - [Packaging as a standalone app yourself](#packaging-as-a-standalone-app-yourself)
 - [QGIS plugin](#qgis-plugin)
+- [Roadmap](#roadmap)
 - [Changelog](#changelog)
 
 ## Download
@@ -215,6 +216,8 @@ A companion QGIS plugin lives in [`qgis-plugin/`](qgis-plugin/), sharing its GPX
 
 **Status: beta, tested on macOS only so far** — the code is platform-independent Python/Qt/QGIS APIs, but Windows/Linux haven't been verified yet.
 
+**Requires QGIS 3.x — not compatible with QGIS 4.** This is enforced in `metadata.txt` (`qgisMaximumVersion=3.99.0`), so QGIS 4 won't offer to install it. QGIS 4 support is on the [roadmap](#roadmap) once the plugin is out of beta and more thoroughly tested — not before.
+
 ### Install the beta
 
 The plugin's `.zip` is published alongside the desktop app on the [**v3.6.3 release**](https://github.com/florentchevallier/GPX-Combiner/releases/tag/v3.6.3) (and on [every release](https://github.com/florentchevallier/GPX-Combiner/releases) from here on).
@@ -245,10 +248,19 @@ ln -s "$(pwd)" "<profile plugins folder>/gpx_combiner"
 
 Then enable "GPX Combiner" the same way as above. To build your own `.zip` from source instead (e.g. after making changes), see [`build_plugin_zip.py`](build_plugin_zip.py) — it stages a clean copy (physically bundling `core/`, no symlinks or dev cruft) into `dist/`.
 
+## Roadmap
+
+Not commitments, just things worth doing once the essentials are solid:
+
+- **QGIS 4 support** — once the plugin is out of beta and reasonably battle-tested on QGIS 3.x across platforms. Not started.
+- Full pagination (10/25/50 per page + date range filter) for the plugin's Strava import, matching the desktop app's.
+- Publish the plugin to the official [QGIS Plugin Repository](https://plugins.qgis.org/) (currently install-from-ZIP only).
+- Verify Windows/Linux compatibility for the plugin.
+
 ## Changelog
 
 See [`CHANGELOG.md`](CHANGELOG.md) for the full version history of both the desktop app and the QGIS plugin.
 
 ---
 
-<p align="center"><sub>Version 3.6.3</sub></p>
+<p align="center"><sub>Version 3.7.4</sub></p>

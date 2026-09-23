@@ -15,9 +15,12 @@ What it does (and why):
      symlink used for local dev) — a zip can't carry a symlink that points
      at your machine, so the shared core modules have to be physically
      inside the plugin folder for a distributed build.
-  3. Skips dev cruft (__pycache__, .pyc, .DS_Store, .git) so none of it
+  3. Copies the repo root's LICENSE file in too — plugins.qgis.org
+     reviewers expect the license to be bundled with the distributed
+     archive, not just visible on GitHub.
+  4. Skips dev cruft (__pycache__, .pyc, .DS_Store, .git) so none of it
      ends up in the zip.
-  4. Zips build/gpx_combiner/ into dist/gpx_combiner-<version>.zip, with
+  5. Zips build/gpx_combiner/ into dist/gpx_combiner-<version>.zip, with
      "gpx_combiner/" as the top-level path inside the archive (required by
      QGIS's "Install from ZIP").
 
@@ -34,6 +37,7 @@ import zipfile
 REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
 QGIS_PLUGIN_DIR = os.path.join(REPO_ROOT, "qgis-plugin")
 CORE_DIR = os.path.join(REPO_ROOT, "core")
+LICENSE_PATH = os.path.join(REPO_ROOT, "LICENSE")
 BUILD_DIR = os.path.join(REPO_ROOT, "build")
 DIST_DIR = os.path.join(REPO_ROOT, "dist")
 
@@ -86,13 +90,21 @@ def main():
     # 2. Copy the real core/ in as physical files.
     _copytree_clean(CORE_DIR, staged_core_link)
 
+    # 3. Copy LICENSE in, if present — warn rather than fail if it's missing,
+    # since older checkouts (or a repo that hasn't added one yet) shouldn't
+    # be unable to build a test zip over this.
+    if os.path.isfile(LICENSE_PATH):
+        shutil.copy2(LICENSE_PATH, os.path.join(stage_dir, "LICENSE"))
+    else:
+        print(f"WARNING: no LICENSE file found at {LICENSE_PATH} — the zip will ship without one.")
+
     version = read_version(os.path.join(stage_dir, "metadata.txt"))
     os.makedirs(DIST_DIR, exist_ok=True)
     zip_path = os.path.join(DIST_DIR, f"{PLUGIN_FOLDER_NAME}-{version}.zip")
     if os.path.exists(zip_path):
         os.remove(zip_path)
 
-    # 3. Zip it with "gpx_combiner/..." as the path inside the archive.
+    # 4. Zip it with "gpx_combiner/..." as the path inside the archive.
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
         for root, dirs, files in os.walk(stage_dir):
             dirs[:] = [d for d in dirs if d not in SKIP_NAMES]

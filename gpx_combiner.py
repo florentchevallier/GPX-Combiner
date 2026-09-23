@@ -85,7 +85,7 @@ def resource_path(filename):
     script."""
     base = getattr(sys, "_MEIPASS", SCRIPT_DIR)
     return os.path.join(base, filename)
-APP_VERSION = "3.7.3"
+APP_VERSION = "3.7.4"
 CONFIG_PATH = os.path.join(SCRIPT_DIR, "strava_config.json")
 APP_CONFIG_PATH = os.path.join(SCRIPT_DIR, "app_config.json")  # app-wide settings (language...), kept
                                                                  # separate from Strava credentials
@@ -1037,6 +1037,18 @@ def reverse_geocode_city(lat, lon):
 # Strava API client
 # ----------------------------------------------------------------------------
 
+# Strips C0/C1 control characters plus the Unicode LINE SEPARATOR (U+2028)
+# and PARAGRAPH SEPARATOR (U+2029) — these act as invisible line breaks and
+# are the likely cause of some activity names rendering garbled in a
+# single-line widget (the name gets split across many tiny sublines).
+# Ordinary characters — pipes, quotes, emoji — are left untouched.
+_CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\u2028\u2029]")
+
+
+def clean_display_text(text):
+    return _CONTROL_CHARS_RE.sub("", text or "")
+
+
 class StravaAuthError(Exception):
     pass
 
@@ -1509,7 +1521,7 @@ class StravaImportWindow(tk.Toplevel):
             dur_str = f"{dur_s // 3600:02d}:{(dur_s % 3600) // 60:02d}:{dur_s % 60:02d}"
 
             self._make_cell(row, self.COL_WIDTHS_PX["date"], text=date_str)
-            self._make_cell(row, self.COL_WIDTHS_PX["name"], text=a.get("name", ""))
+            self._make_cell(row, self.COL_WIDTHS_PX["name"], text=clean_display_text(a.get("name", "")))
             self._make_cell(row, self.COL_WIDTHS_PX["type"], text=a.get("type", ""))
             self._make_cell(row, self.COL_WIDTHS_PX["distance"], text=f"{dist_km:.2f} km")
             self._make_cell(row, self.COL_WIDTHS_PX["duration"], text=dur_str)

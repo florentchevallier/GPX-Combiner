@@ -30,11 +30,29 @@ SETTINGS_LAST_OPEN_DIR = "gpx_combiner/last_open_dir"
 SETTINGS_LAST_SAVE_DIR = "gpx_combiner/last_save_dir"
 
 
+def _read_plugin_version():
+    """Reads version= from this plugin's own metadata.txt, so the window
+    title can show it — handy when you have more than one install of this
+    plugin around (e.g. a dev symlink and a separately installed .zip) and
+    need to tell at a glance which one you're actually looking at."""
+    metadata_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "metadata.txt")
+    try:
+        with open(metadata_path, encoding="utf-8") as f:
+            for line in f:
+                m = re.match(r"version\s*=\s*(.+)", line.strip())
+                if m:
+                    return m.group(1).strip()
+    except OSError:
+        pass
+    return None
+
+
 class GpxCombinerDialog(QDialog):
     def __init__(self, iface, parent=None):
         super().__init__(parent)
         self.iface = iface
-        self.setWindowTitle("GPX Combiner")
+        version = _read_plugin_version()
+        self.setWindowTitle(f"GPX Combiner v{version}" if version else "GPX Combiner")
         self.resize(600, 440)
         self.files = []  # [{"path": str, "content": str, "sort_key": str}]
 
@@ -56,6 +74,9 @@ class GpxCombinerDialog(QDialog):
         strava_btn = QPushButton("Import from Strava…")
         strava_btn.clicked.connect(self.open_strava_import)
         btn_row.addWidget(strava_btn)
+        strava_settings_btn = QPushButton("⚙ Strava settings")
+        strava_settings_btn.clicked.connect(self.open_strava_settings)
+        btn_row.addWidget(strava_settings_btn)
         layout.addLayout(btn_row)
 
         layout.addWidget(QLabel("Detected chronological order (oldest to newest):"))
@@ -152,6 +173,12 @@ class GpxCombinerDialog(QDialog):
     def open_strava_import(self):
         from .strava_dialog import StravaImportDialog
         dlg = StravaImportDialog(self, on_downloaded=self.add_paths)
+        dlg.exec_()
+        self._bring_to_front()
+
+    def open_strava_settings(self):
+        from .strava_dialog import StravaSettingsDialog
+        dlg = StravaSettingsDialog(self)
         dlg.exec_()
         self._bring_to_front()
 

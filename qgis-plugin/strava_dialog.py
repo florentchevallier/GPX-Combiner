@@ -16,18 +16,21 @@ These can be added later the same way the desktop app's Strava import grew.
 """
 
 import os
+import re
+import time
 import tempfile
+import webbrowser
 
 from qgis.PyQt.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem,
-    QPushButton, QLabel, QMessageBox, QLineEdit, QFormLayout,
+    QPushButton, QLabel, QMessageBox, QLineEdit, QFormLayout, QComboBox,
 )
-from qgis.PyQt.QtCore import Qt
+from qgis.PyQt.QtCore import Qt, QObject, QThread, pyqtSignal
 from qgis.core import QgsSettings
 
 from strava_client import (
     StravaClient, StravaAuthError, StravaAPIError,
-    build_gpx_from_activity, sanitize_filename,
+    build_gpx_from_activity, sanitize_filename, GPX_TYPE_CHOICES,
 )
 
 # Downloaded activities land here silently — no "choose a folder" prompt.
@@ -38,6 +41,19 @@ from strava_client import (
 STRAVA_DOWNLOAD_DIR = os.path.join(tempfile.gettempdir(), "gpx_combiner_strava")
 
 SETTINGS_STRAVA_PREFIX = "gpx_combiner/strava"
+
+# Strips C0/C1 control characters plus the Unicode LINE SEPARATOR (U+2028)
+# and PARAGRAPH SEPARATOR (U+2029) — these act as invisible line breaks and
+# are the likely cause of some activity names rendering as garbled vertical
+# bars in a single-line list item (the name itself gets split across many
+# tiny sublines). Ordinary characters — pipes, quotes, emoji — are left
+# untouched; this only removes characters that shouldn't be visibly present
+# in a one-line title anyway.
+_CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\u2028\u2029]")
+
+
+def _clean_display_text(text):
+    return _CONTROL_CHARS_RE.sub("", text or "")
 
 
 def _load_strava_config():
@@ -113,6 +129,99 @@ class StravaCredentialsDialog(QDialog):
         self.accept()
 
 
+class StravaSettingsDialog(QDialog):
+    """Shows the currently saved Strava account (if any) and lets the user
+    disconnect — erasing the saved Client ID/Secret and tokens from
+    QgsSettings — so a revoked/invalid token (e.g. after removing the
+    app's access from Strava's own site) doesn't leave the plugin stuck
+    with no way back to a fresh connection."""
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.setWindowTitle("Strava settings")
+        self.setMinimumWidth(360)
+
+        layout = QVBoxLayout(self)
+        self.status_label = QLabel("")
+        self.status_label.setWordWrap(True)
+        layout.addWidget(self.status_label)
+
+        btn_row = QHBoxLayout()
+        self.connect_btn = QPushButton("Connect…")
+        self.connect_btn.clicked.connect(self._connect)
+        btn_row.addWidget(self.connect_btn)
+        self.disconnect_btn = QPushButton("Disconnect and erase credentials")
+        self.disconnect_btn.clicked.connect(self._disconnect)
+        btn_row.addWidget(self.disconnect_btn)
+        btn_row.addStretch()
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(self.accept)
+        btn_row.addWidget(close_btn)
+        layout.addLayout(btn_row)
+
+        self._refresh_status()
+
+    def _refresh_status(self):
+        config = _load_strava_config()
+        if not config.get("client_id"):
+            self.status_label.setText("No Strava credentials saved on this computer.")
+            self.connect_btn.setEnabled(True)
+            self.disconnect_btn.setEnabled(False)
+            return
+
+        self.connect_btn.setEnabled(False)
+        self.disconnect_btn.setEnabled(True)
+        lines = [f"Client ID: {config.get('client_id')}"]
+        if config.get("refresh_token"):
+            name = self._fetch_athlete_name(config)
+            lines.append(f"Connected as: {name}" if name
+                         else "Authorized, but the saved token appears to be invalid "
+                              "(e.g. access was removed on Strava's side) — disconnect and "
+                              "reconnect to fix this.")
+        else:
+            lines.append("Credentials saved, but not yet authorized.")
+        self.status_label.setText("\n".join(lines))
+
+    def _fetch_athlete_name(self, config):
+        try:
+            client = StravaClient(dict(config))
+            data = client.get_athlete()
+        except Exception:
+            return None
+        name = f"{data.get('firstname', '')} {data.get('lastname', '')}".strip()
+        return name or None
+
+    def _connect(self):
+        client = StravaClient(_load_strava_config())
+        if not client.has_credentials:
+            dlg = StravaCredentialsDialog(self)
+            if dlg.exec_() != QDialog.Accepted or dlg.result is None:
+                return
+            client.config["client_id"], client.config["client_secret"] = dlg.result
+            _save_strava_config(client.config)
+        if not client.has_token:
+            try:
+                client.authorize_interactive()
+            except StravaAuthError as e:
+                QMessageBox.critical(self, "GPX Combiner", f"Strava authorization failed:\n{e}")
+                return
+            _save_strava_config(client.config)
+        self._refresh_status()
+
+    def _disconnect(self):
+        reply = QMessageBox.question(
+            self, "Confirm disconnect",
+            "This will delete the Client ID, Client Secret, and access tokens saved on this "
+            "computer. You'll need to re-enter them to reconnect Strava. Continue?",
+            QMessageBox.Yes | QMessageBox.No)
+        if reply != QMessageBox.Yes:
+            return
+        settings = QgsSettings()
+        settings.remove(SETTINGS_STRAVA_PREFIX)
+        QMessageBox.information(self, "GPX Combiner", "Strava credentials have been erased from this computer.")
+        self._refresh_status()
+
+
 class StravaImportDialog(QDialog):
     """Lists recent Strava activities with checkboxes; downloads the
     selected ones as GPX files and hands their paths to on_downloaded(paths)
@@ -128,6 +237,7 @@ class StravaImportDialog(QDialog):
         self.page = 1
         self.per_page = 10
         self.activity_cache = {}
+        self._gear_cache = {}  # gear_id -> name, shared across pages
 
         layout = QVBoxLayout(self)
         self.status_label = QLabel("")
@@ -211,7 +321,11 @@ class StravaImportDialog(QDialog):
             dur_s = a.get("moving_time") or 0
             dur_str = f"{dur_s // 3600:02d}:{(dur_s % 3600) // 60:02d}:{dur_s % 60:02d}"
             date_str = (a.get("start_date_local") or a.get("start_date") or "")[:10]
-            label = f"{date_str}  —  {a.get('name', '')}  ({a.get('type', '')}, {dist_km:.2f} km, {dur_str})"
+            gear_name = self._resolve_gear(a.get("gear_id"))
+            activity_name = _clean_display_text(a.get("name", ""))
+            label = f"{date_str}  —  {activity_name}  ({a.get('type', '')}, {dist_km:.2f} km, {dur_str})"
+            if gear_name:
+                label += f"  [{gear_name}]"
             item = QListWidgetItem(label)
             item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
             item.setCheckState(Qt.Unchecked)
@@ -220,6 +334,24 @@ class StravaImportDialog(QDialog):
 
         self.more_btn.setEnabled(len(activities) == self.per_page)
         self.status_label.setText("" if self.list_widget.count() else "No activities found.")
+
+    def _resolve_gear(self, gear_id):
+        """Best-effort gear name lookup, cached by gear_id. Fetched
+        synchronously (simpler than the desktop app's background-thread
+        version) — only the very first activity using a given piece of gear
+        in this session causes a brief pause; every repeat is instant from
+        cache. Silently falls back to the raw gear_id (or nothing) on any
+        API error, e.g. if the current token's scope doesn't cover it."""
+        if not gear_id:
+            return None
+        if gear_id in self._gear_cache:
+            return self._gear_cache[gear_id]
+        try:
+            name = self.client.get_gear(gear_id).get("name") or gear_id
+        except (StravaAPIError, StravaAuthError):
+            name = gear_id
+        self._gear_cache[gear_id] = name
+        return name
 
     def _update_download_label(self, *_):
         count = sum(1 for i in range(self.list_widget.count())
@@ -275,3 +407,150 @@ class StravaImportDialog(QDialog):
         if saved_paths:
             self.on_downloaded(saved_paths)
             self.accept()
+
+
+class UploadOptionsDialog(QDialog):
+    """Asks for the activity name and its Strava type together, the type
+    pre-selected from whatever the combined GPX's own <type> tag already
+    says. Read .name / .gpx_type after exec_() == QDialog.Accepted."""
+
+    def __init__(self, parent, default_name, default_type):
+        super().__init__(parent)
+        self.setWindowTitle("Activity name")
+        self.setMinimumWidth(360)
+        self.name = None
+        self.gpx_type = None
+
+        layout = QVBoxLayout(self)
+        form = QFormLayout()
+        self.name_edit = QLineEdit(default_name)
+        form.addRow("Name to give this activity on Strava:", self.name_edit)
+
+        self.type_combo = QComboBox()
+        self.type_combo.addItems(GPX_TYPE_CHOICES)
+        if default_type in GPX_TYPE_CHOICES:
+            self.type_combo.setCurrentText(default_type)
+        form.addRow("Activity type:", self.type_combo)
+        layout.addLayout(form)
+
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.clicked.connect(self.reject)
+        btn_row.addWidget(cancel_btn)
+        ok_btn = QPushButton("OK")
+        ok_btn.clicked.connect(self._on_ok)
+        btn_row.addWidget(ok_btn)
+        layout.addLayout(btn_row)
+
+    def _on_ok(self):
+        self.name = self.name_edit.text().strip()
+        self.gpx_type = self.type_combo.currentText()
+        self.accept()
+
+
+class _UploadWorker(QObject):
+    """Runs upload_gpx() + the check_upload() polling loop on a background
+    QThread. Uses Qt signals (not direct widget calls) to report back, since
+    those are the thread-safe way to reach UI code living on the main
+    thread."""
+    progress = pyqtSignal(str)
+    success = pyqtSignal(str)
+    error = pyqtSignal(str)
+
+    def __init__(self, client, filepath, name):
+        super().__init__()
+        self.client = client
+        self.filepath = filepath
+        self.name = name
+
+    def run(self):
+        try:
+            upload_id = self.client.upload_gpx(self.filepath, name=self.name)
+        except (StravaAPIError, StravaAuthError, OSError) as e:
+            self.error.emit(str(e))
+            return
+
+        deadline = time.time() + 120
+        while time.time() < deadline:
+            time.sleep(2)
+            try:
+                status = self.client.check_upload(upload_id)
+            except (StravaAPIError, StravaAuthError) as e:
+                self.error.emit(str(e))
+                return
+            if status.get("error"):
+                self.error.emit(status["error"])
+                return
+            if status.get("activity_id"):
+                self.success.emit(str(status["activity_id"]))
+                return
+            self.progress.emit(status.get("status", ""))
+
+        self.error.emit("Strava is taking unusually long to process this — try again later.")
+
+
+class UploadProgressDialog(QDialog):
+    """Shown while a combined GPX is being uploaded to Strava; updates live
+    as the background worker reports progress, the final activity, or an
+    error (e.g. Strava detecting a duplicate)."""
+
+    def __init__(self, parent, client, filepath, name):
+        super().__init__(parent)
+        self.setWindowTitle("Uploading to Strava")
+        self.setMinimumWidth(360)
+        self._activity_id = None
+
+        layout = QVBoxLayout(self)
+        self.status_label = QLabel("Uploading the file…")
+        self.status_label.setWordWrap(True)
+        layout.addWidget(self.status_label)
+
+        btn_row = QHBoxLayout()
+        self.view_btn = QPushButton("View on Strava")
+        self.view_btn.clicked.connect(self._open_activity)
+        self.view_btn.hide()
+        btn_row.addWidget(self.view_btn)
+        btn_row.addStretch()
+        self.close_btn = QPushButton("Close")
+        self.close_btn.clicked.connect(self.accept)
+        self.close_btn.setEnabled(False)
+        btn_row.addWidget(self.close_btn)
+        layout.addLayout(btn_row)
+
+        self._thread = QThread(self)
+        self._worker = _UploadWorker(client, filepath, name)
+        self._worker.moveToThread(self._thread)
+        self._thread.started.connect(self._worker.run)
+        self._worker.progress.connect(self._on_progress)
+        self._worker.success.connect(self._on_success)
+        self._worker.error.connect(self._on_error)
+        self._worker.success.connect(self._thread.quit)
+        self._worker.error.connect(self._thread.quit)
+        self._thread.start()
+
+    def _on_progress(self, text):
+        self.status_label.setText(text or "Strava is processing it…")
+
+    def _on_success(self, activity_id):
+        self._activity_id = activity_id
+        self.status_label.setText("Activity created successfully.")
+        self.view_btn.show()
+        self.close_btn.setEnabled(True)
+
+    def _on_error(self, err):
+        self.status_label.setText(f"Upload failed:\n{err}")
+        self.close_btn.setEnabled(True)
+
+    def _open_activity(self):
+        if self._activity_id:
+            webbrowser.open_new_tab(f"https://www.strava.com/activities/{self._activity_id}/overview")
+
+    def closeEvent(self, event):
+        # Ignore the window's own close button while the upload is still
+        # running — close_btn (the one way to close cleanly) stays disabled
+        # until the worker reports success or an error.
+        if self.close_btn.isEnabled():
+            event.accept()
+        else:
+            event.ignore()
