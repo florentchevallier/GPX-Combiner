@@ -13,6 +13,7 @@ from qgis.core import (
     QgsLineSymbol, QgsSingleSymbolRenderer, QgsUnitTypes, QgsSettings,
     QgsSimpleLineSymbolLayer, QgsMarkerLineSymbolLayer, QgsSimpleMarkerSymbolLayer,
     QgsSimpleMarkerSymbolLayerBase, QgsMarkerSymbol,
+    QgsMessageLog, Qgis,
 )
 
 # From ../core/gpx_core.py — see the sys.path setup in gpx_combiner_plugin.py.
@@ -28,6 +29,18 @@ TRACK_LINE_WIDTH_MM = 1.6
 GPX_GROUP_NAME = "GPX Combiner"
 SETTINGS_LAST_OPEN_DIR = "gpx_combiner/last_open_dir"
 SETTINGS_LAST_SAVE_DIR = "gpx_combiner/last_save_dir"
+
+
+# Same narrowed filter as strava_dialog.py's _clean_display_text — see the
+# comment there (2026-09-24) for why this is scoped to just variation
+# selectors now, not whole emoji/symbol blocks. Kept as a small local copy
+# here rather than imported, so this file doesn't have to eagerly load
+# strava_dialog.py's Qt-heavy imports just for this.
+_DISPLAY_STRIP_RE = re.compile(r"[\x00-\x1f\x7f\u2028\u2029\ufe00-\ufe0f]")
+
+
+def _clean_display_text(text):
+    return _DISPLAY_STRIP_RE.sub("", text or "")
 
 
 def _read_plugin_version():
@@ -81,14 +94,14 @@ class GpxCombinerDialog(QDialog):
 
         layout.addWidget(QLabel("Detected chronological order (oldest to newest):"))
         self.list_widget = QListWidget()
-        self.list_widget.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.list_widget.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         layout.addWidget(self.list_widget)
 
         # Delete/Backspace removes the selected file(s) from this list —
         # never touches anything on disk, just the plugin's working set.
-        for key in (Qt.Key_Delete, Qt.Key_Backspace):
+        for key in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
             shortcut = QShortcut(QKeySequence(key), self.list_widget)
-            shortcut.setContext(Qt.WidgetShortcut)
+            shortcut.setContext(Qt.ShortcutContext.WidgetShortcut)
             shortcut.activated.connect(self.remove_selected)
 
         layout.addWidget(QLabel("Include in export:"))
@@ -154,7 +167,7 @@ class GpxCombinerDialog(QDialog):
             gpx_type = read_gpx_type(f["content"])
             badges = "  ".join(EXTENSION_FIELD_LABELS[k] for k in EXTENSION_FIELDS if ext.get(k))
             extras = "   |   ".join(x for x in (gpx_type, badges) if x)
-            label = f"{i}. {f['sort_key']}  —  {os.path.basename(f['path'])}"
+            label = f"{i}. {f['sort_key']}  —  {_clean_display_text(os.path.basename(f['path']))}"
             if extras:
                 label += f"   |   {extras}"
             self.list_widget.addItem(label)
@@ -173,13 +186,13 @@ class GpxCombinerDialog(QDialog):
     def open_strava_import(self):
         from .strava_dialog import StravaImportDialog
         dlg = StravaImportDialog(self, on_downloaded=self.add_paths)
-        dlg.exec_()
+        dlg.exec()
         self._bring_to_front()
 
     def open_strava_settings(self):
         from .strava_dialog import StravaSettingsDialog
         dlg = StravaSettingsDialog(self)
-        dlg.exec_()
+        dlg.exec()
         self._bring_to_front()
 
     # -- basemap --
@@ -260,22 +273,22 @@ class GpxCombinerDialog(QDialog):
         line_symbol.deleteSymbolLayer(0)  # drop the default layer, build our own stack
 
         base = QgsSimpleLineSymbolLayer(QColor(color), TRACK_LINE_WIDTH_MM)
-        base.setWidthUnit(QgsUnitTypes.RenderMillimeters)
+        base.setWidthUnit(QgsUnitTypes.RenderUnit.RenderMillimeters)
         line_symbol.appendSymbolLayer(base)
 
-        arrow = QgsSimpleMarkerSymbolLayer(QgsSimpleMarkerSymbolLayerBase.ArrowHead, size=8)
-        arrow.setSizeUnit(QgsUnitTypes.RenderMillimeters)
+        arrow = QgsSimpleMarkerSymbolLayer(QgsSimpleMarkerSymbolLayerBase.Shape.ArrowHead, size=8)
+        arrow.setSizeUnit(QgsUnitTypes.RenderUnit.RenderMillimeters)
         arrow.setColor(QColor(color))
         arrow.setStrokeColor(QColor(color))
         arrow.setStrokeWidth(1)
-        arrow.setStrokeWidthUnit(QgsUnitTypes.RenderMillimeters)
+        arrow.setStrokeWidthUnit(QgsUnitTypes.RenderUnit.RenderMillimeters)
         arrow_symbol = QgsMarkerSymbol()
         arrow_symbol.changeSymbolLayer(0, arrow)
 
         marker_line = QgsMarkerLineSymbolLayer(True)  # rotate markers to follow the line
-        marker_line.setPlacement(QgsMarkerLineSymbolLayer.Interval)
+        marker_line.setPlacement(QgsMarkerLineSymbolLayer.Placement.Interval)
         marker_line.setInterval(50)
-        marker_line.setIntervalUnit(QgsUnitTypes.RenderMillimeters)
+        marker_line.setIntervalUnit(QgsUnitTypes.RenderUnit.RenderMillimeters)
         marker_line.setSubSymbol(arrow_symbol)
         line_symbol.appendSymbolLayer(marker_line)
 
@@ -293,7 +306,7 @@ class GpxCombinerDialog(QDialog):
             node = root.findLayer(layer.id())
             if node is not None:
                 index = model.node2index(node)
-                selection_model.select(index, QItemSelectionModel.Select)
+                selection_model.select(index, QItemSelectionModel.SelectionFlag.Select)
 
     def _zoom_to_layers(self, layers):
         canvas = self.iface.mapCanvas()
@@ -308,8 +321,13 @@ class GpxCombinerDialog(QDialog):
                 transform = QgsCoordinateTransform(layer.crs(), dest_crs, QgsProject.instance())
                 try:
                     extent = transform.transformBoundingBox(extent)
-                except Exception:
-                    continue
+                except Exception as e:
+                    QgsMessageLog.logMessage(
+                        f"Could not transform extent of {layer.name()}: {e}",
+                        "GPX Combiner", Qgis.MessageLevel.Warning)
+                    extent = QgsRectangle()
+            if extent.isEmpty():
+                continue
             combined.combineExtentWith(extent)
         if combined.isEmpty():
             return
@@ -381,15 +399,15 @@ class GpxCombinerDialog(QDialog):
                 "To avoid a duplicate-activity error, you may want to delete them on Strava before "
                 "uploading (recoverable for 30 days if you change your mind). Open each one in a "
                 "new browser tab?",
-                QMessageBox.Yes | QMessageBox.No)
-            if reply == QMessageBox.Yes:
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            if reply == QMessageBox.StandardButton.Yes:
                 for aid in original_ids:
                     webbrowser.open_new_tab(f"https://www.strava.com/activities/{aid}/overview")
 
         client = StravaClient(_load_strava_config())
         if not client.has_credentials:
             dlg = StravaCredentialsDialog(self)
-            if dlg.exec_() != QDialog.Accepted or dlg.result is None:
+            if dlg.exec() != QDialog.DialogCode.Accepted or dlg.result is None:
                 return
             client.config["client_id"], client.config["client_secret"] = dlg.result
             _save_strava_config(client.config)
@@ -418,7 +436,7 @@ class GpxCombinerDialog(QDialog):
 
         dlg = UploadOptionsDialog(self, default_name, default_type)
         self._bring_to_front()
-        if dlg.exec_() != QDialog.Accepted:
+        if dlg.exec() != QDialog.DialogCode.Accepted:
             return
         name, gpx_type = dlg.name, dlg.gpx_type
 
@@ -436,5 +454,5 @@ class GpxCombinerDialog(QDialog):
             return
 
         dlg = UploadProgressDialog(self, client, upload_path, name)
-        dlg.exec_()
+        dlg.exec()
         _save_strava_config(client.config)

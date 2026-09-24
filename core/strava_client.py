@@ -35,7 +35,11 @@ except ImportError:
 
 
 def _urlopen(request, timeout):
-    return urllib.request.urlopen(request, timeout=timeout, context=SSL_CONTEXT)
+    url = request.full_url if hasattr(request, "full_url") else str(request)
+    if urllib.parse.urlparse(url).scheme != "https":
+        raise StravaAPIError("Refusing to open non-HTTPS URL")
+    return urllib.request.urlopen(  # nosec B310 - scheme validated above
+        request, timeout=timeout, context=SSL_CONTEXT)
 
 
 REDIRECT_PORT = 8721
@@ -82,7 +86,7 @@ class _DualStackHTTPServer(HTTPServer):
 
 
 class StravaClient:
-    TOKEN_URL = "https://www.strava.com/oauth/token"
+    TOKEN_URL = "https://www.strava.com/oauth/token"  # nosec B105 - public endpoint, not a secret
     AUTHORIZE_URL = "https://www.strava.com/oauth/authorize"
     API_BASE = "https://www.strava.com/api/v3"
 

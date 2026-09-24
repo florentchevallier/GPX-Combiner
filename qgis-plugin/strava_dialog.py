@@ -42,18 +42,23 @@ STRAVA_DOWNLOAD_DIR = os.path.join(tempfile.gettempdir(), "gpx_combiner_strava")
 
 SETTINGS_STRAVA_PREFIX = "gpx_combiner/strava"
 
-# Strips C0/C1 control characters plus the Unicode LINE SEPARATOR (U+2028)
-# and PARAGRAPH SEPARATOR (U+2029) — these act as invisible line breaks and
-# are the likely cause of some activity names rendering as garbled vertical
-# bars in a single-line list item (the name itself gets split across many
-# tiny sublines). Ordinary characters — pipes, quotes, emoji — are left
-# untouched; this only removes characters that shouldn't be visibly present
-# in a one-line title anyway.
-_CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\u2028\u2029]")
+# Strips characters that break single-line label/list-item rendering:
+#   - C0 control chars + LINE/PARAGRAPH SEPARATOR (U+2028/29): invisible line
+#     breaks that can split one row's text across several tiny sublines.
+#   - Variation selectors (U+FE00-FE0F): the invisible modifier that forces
+#     color/emoji presentation of the preceding character (e.g. the U+FE0F
+#     in ☀️/☁️/🌧️). Narrowed to just this (2026-09-24) after an earlier,
+#     broader version of this filter (stripping whole emoji/symbol blocks)
+#     turned out to remove plenty of emoji that actually rendered fine —
+#     the variation selector specifically is the more likely real culprit
+#     for garbled rows, a known troublemaker in some Qt/font combinations.
+#     Base emoji/symbol codepoints are otherwise left alone.
+# Ordinary characters — pipes, quotes, accented letters — are left untouched.
+_DISPLAY_STRIP_RE = re.compile(r"[\x00-\x1f\x7f\u2028\u2029\ufe00-\ufe0f]")
 
 
 def _clean_display_text(text):
-    return _CONTROL_CHARS_RE.sub("", text or "")
+    return _DISPLAY_STRIP_RE.sub("", text or "")
 
 
 def _load_strava_config():
@@ -104,7 +109,7 @@ class StravaCredentialsDialog(QDialog):
         form = QFormLayout()
         self.id_edit = QLineEdit()
         self.secret_edit = QLineEdit()
-        self.secret_edit.setEchoMode(QLineEdit.Password)
+        self.secret_edit.setEchoMode(QLineEdit.EchoMode.Password)
         form.addRow("Client ID:", self.id_edit)
         form.addRow("Client Secret:", self.secret_edit)
         layout.addLayout(form)
@@ -195,7 +200,7 @@ class StravaSettingsDialog(QDialog):
         client = StravaClient(_load_strava_config())
         if not client.has_credentials:
             dlg = StravaCredentialsDialog(self)
-            if dlg.exec_() != QDialog.Accepted or dlg.result is None:
+            if dlg.exec() != QDialog.DialogCode.Accepted or dlg.result is None:
                 return
             client.config["client_id"], client.config["client_secret"] = dlg.result
             _save_strava_config(client.config)
@@ -213,8 +218,8 @@ class StravaSettingsDialog(QDialog):
             self, "Confirm disconnect",
             "This will delete the Client ID, Client Secret, and access tokens saved on this "
             "computer. You'll need to re-enter them to reconnect Strava. Continue?",
-            QMessageBox.Yes | QMessageBox.No)
-        if reply != QMessageBox.Yes:
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if reply != QMessageBox.StandardButton.Yes:
             return
         settings = QgsSettings()
         settings.remove(SETTINGS_STRAVA_PREFIX)
@@ -272,7 +277,7 @@ class StravaImportDialog(QDialog):
         client = StravaClient(_load_strava_config())
         if not client.has_credentials:
             dlg = StravaCredentialsDialog(self)
-            if dlg.exec_() != QDialog.Accepted or dlg.result is None:
+            if dlg.exec() != QDialog.DialogCode.Accepted or dlg.result is None:
                 self.reject()
                 return
             client.config["client_id"], client.config["client_secret"] = dlg.result
@@ -327,9 +332,9 @@ class StravaImportDialog(QDialog):
             if gear_name:
                 label += f"  [{gear_name}]"
             item = QListWidgetItem(label)
-            item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
-            item.setCheckState(Qt.Unchecked)
-            item.setData(Qt.UserRole, a["id"])
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(Qt.CheckState.Unchecked)
+            item.setData(Qt.ItemDataRole.UserRole, a["id"])
             self.list_widget.addItem(item)
 
         self.more_btn.setEnabled(len(activities) == self.per_page)
@@ -355,14 +360,14 @@ class StravaImportDialog(QDialog):
 
     def _update_download_label(self, *_):
         count = sum(1 for i in range(self.list_widget.count())
-                    if self.list_widget.item(i).checkState() == Qt.Checked)
+                    if self.list_widget.item(i).checkState() == Qt.CheckState.Checked)
         self.download_btn.setText(f"Download selected ({count})")
 
     # -- download --
     def download_selected(self):
-        selected_ids = [self.list_widget.item(i).data(Qt.UserRole)
+        selected_ids = [self.list_widget.item(i).data(Qt.ItemDataRole.UserRole)
                          for i in range(self.list_widget.count())
-                         if self.list_widget.item(i).checkState() == Qt.Checked]
+                         if self.list_widget.item(i).checkState() == Qt.CheckState.Checked]
         if not selected_ids:
             return
 
@@ -412,7 +417,7 @@ class StravaImportDialog(QDialog):
 class UploadOptionsDialog(QDialog):
     """Asks for the activity name and its Strava type together, the type
     pre-selected from whatever the combined GPX's own <type> tag already
-    says. Read .name / .gpx_type after exec_() == QDialog.Accepted."""
+    says. Read .name / .gpx_type after exec() == QDialog.DialogCode.Accepted."""
 
     def __init__(self, parent, default_name, default_type):
         super().__init__(parent)

@@ -85,7 +85,7 @@ def resource_path(filename):
     script."""
     base = getattr(sys, "_MEIPASS", SCRIPT_DIR)
     return os.path.join(base, filename)
-APP_VERSION = "3.7.4"
+APP_VERSION = "3.7.7"
 CONFIG_PATH = os.path.join(SCRIPT_DIR, "strava_config.json")
 APP_CONFIG_PATH = os.path.join(SCRIPT_DIR, "app_config.json")  # app-wide settings (language...), kept
                                                                  # separate from Strava credentials
@@ -1037,16 +1037,16 @@ def reverse_geocode_city(lat, lon):
 # Strava API client
 # ----------------------------------------------------------------------------
 
-# Strips C0/C1 control characters plus the Unicode LINE SEPARATOR (U+2028)
-# and PARAGRAPH SEPARATOR (U+2029) — these act as invisible line breaks and
-# are the likely cause of some activity names rendering garbled in a
-# single-line widget (the name gets split across many tiny sublines).
-# Ordinary characters — pipes, quotes, emoji — are left untouched.
-_CONTROL_CHARS_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\u2028\u2029]")
+# Strips C0 control characters plus the Unicode LINE SEPARATOR (U+2028) and
+# PARAGRAPH SEPARATOR (U+2029) — these act as invisible line breaks and can
+# split one row's text across several tiny sublines. Confirmed (2026-09-24)
+# that emoji themselves are NOT the problem on the desktop app — this stays
+# narrow on purpose; don't broaden it to strip emoji here again.
+_DISPLAY_STRIP_RE = re.compile(r"[\x00-\x1f\x7f\u2028\u2029]")
 
 
 def clean_display_text(text):
-    return _CONTROL_CHARS_RE.sub("", text or "")
+    return _DISPLAY_STRIP_RE.sub("", text or "")
 
 
 class StravaAuthError(Exception):
@@ -2368,7 +2368,7 @@ class GpxCombinerApp:
         self.listbox.delete(0, tk.END)
         for i, f in enumerate(self.files, start=1):
             label = f["sort_key"] or self.t("unknown_time")
-            line = f"{i}. {label}  —  {f['path']}"
+            line = f"{i}. {label}  —  {clean_display_text(f['path'])}"
             gpx_type = read_gpx_type(f["content"])
             badges = "  ".join(f"{EXTENSION_FIELD_LABELS[k]} ✅"
                                 for k in EXTENSION_FIELDS if f.get("ext_fields", {}).get(k))

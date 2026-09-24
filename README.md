@@ -11,7 +11,8 @@
 <p align="center">
   <img alt="platform" src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-informational">
   <img alt="python" src="https://img.shields.io/badge/python-3.9%2B-blue">
-  <img alt="version" src="https://img.shields.io/badge/version-3.6.3-orange">
+  <img alt="version" src="https://img.shields.io/badge/version-3.7.7-orange">
+  <img alt="license" src="https://img.shields.io/badge/license-GPL--3.0--or--later-blue">
 </p>
 
 <p align="center">
@@ -33,6 +34,7 @@
 - [Using the app](#using-the-app)
 - [Troubleshooting](#troubleshooting)
 - [Privacy](#privacy)
+- [License](#license)
 - [Packaging as a standalone app yourself](#packaging-as-a-standalone-app-yourself)
 - [QGIS plugin](#qgis-plugin)
 - [Roadmap](#roadmap)
@@ -56,7 +58,8 @@ Download the `.app`/`.dmg` for macOS or the `.exe`/`.zip` for Windows from the *
 ## What it does
 
 - **Combine multiple GPX files** into one, in chronological order — handy for splitting a long ride/run into segments on your GPS device and merging them back into a single activity afterwards.
-- **Import activities directly from Strava**: browse your recent activities (with pagination, date filtering, and a choice of 10/25/50 per page), pick the ones you want, and download them as GPX — Strava's API doesn't offer a direct GPX export, so the app rebuilds one from the underlying GPS/altitude/time (and optionally heart rate/cadence/power/temperature) data streams.
+- **Import activities directly from Strava**: browse your recent activities (with pagination, date filtering, a choice of 10/25/50 per page, and each activity's gear shown), pick the ones you want, and download them as GPX — Strava's API doesn't offer a direct GPX export, so the app rebuilds one from the underlying GPS/altitude/time (and optionally heart rate/cadence/power/temperature) data streams.
+- **Upload the combined result straight back to Strava**, with an activity-type dropdown and a duplicate-avoidance check: if any of the combined files came from existing Strava activities, it offers to open them in your browser so you can delete them first (Strava keeps deleted activities recoverable for 30 days).
 - **Preview tracks on a map** before combining: an OpenStreetMap view with each track in its own color, start/finish markers, and a legend.
 - **Keep or drop extra sensor data**: each file shows which of HR / cadence / power / temperature it contains, and you can choose which of those to keep in the combined output.
 - **Multi-language interface**: French, English, Spanish, German.
@@ -144,6 +147,8 @@ Strava requires every app — including one running on your own computer — to 
 
 Your Client ID/Secret and access tokens are saved **only** in a `strava_config.json` file next to the script on your own computer — never sent anywhere except directly to Strava's API. You can revoke access and erase everything at any time from **⚙ Strava settings → Disconnect and erase credentials**.
 
+> **Already connected from an older version?** Uploading to Strava needs a wider permission (`activity:write`, not just read access) than earlier versions requested. The next time you use Import or Upload, Strava will ask you to re-authorize — this is expected, a one-time step.
+
 > **Troubleshooting the connection?** See the [Troubleshooting](#troubleshooting) section below.
 
 ## Using the app
@@ -153,6 +158,7 @@ Your Client ID/Secret and access tokens are saved **only** in a `strava_config.j
 3. Click **"Preview…"** to see all loaded tracks overlaid on a map, each in its own color, with start/finish markers.
 4. Choose which extra data to keep — **HR / Cadence / Power / Temp** — using the checkboxes above the combine button (only shown if at least one loaded file actually contains that data).
 5. Click **"Combine and save…"** and pick where to save the result.
+6. Optionally, click **"Upload to Strava…"** to send the combined file straight to your account — pick an activity name and type (pre-filled from the file itself), and it'll upload and let you know once Strava has finished processing it.
 
 ## Troubleshooting
 
@@ -195,34 +201,40 @@ Make sure your Strava application's **Authorization Callback Domain** is set to 
 ## Privacy
 
 - All data stays local: GPX files, Strava credentials, and downloaded activities are only ever written to your own computer.
-- The only network calls this app makes are to Strava's official API (`strava.com`) when you explicitly use the Strava import feature, and to OpenStreetMap's tile server when you open the map preview.
+- The only network calls this app makes are to Strava's official API (`strava.com`) when you explicitly use the Strava import/upload features, and to OpenStreetMap's tile server when you open the map preview.
 - Nothing is sent to any third-party analytics, ad, or tracking service — this app has none.
+
+## License
+
+[GPL-3.0-or-later](LICENSE) — applies to the whole repository (desktop app, `core/`, and the QGIS plugin).
 
 ## Packaging as a standalone app yourself
 
-Want to build your own `.app`/`.exe` instead of using the one from [Releases](https://github.com/florentchevallier/GPX-Combiner/releases)? See `setup.py` (uses [py2app](https://py2app.readthedocs.io/)):
+Want to build your own `.app`/`.exe` instead of using the one from [Releases](https://github.com/florentchevallier/GPX-Combiner/releases)? See `py2app_setup.py` (uses [py2app](https://py2app.readthedocs.io/)):
 
 ```bash
 pip3 install py2app certifi
-python3 setup.py py2app -A     # fast "alias" build, for testing
-python3 setup.py py2app        # full standalone build, in dist/
+python3 py2app_setup.py py2app -A     # fast "alias" build, for testing
+python3 py2app_setup.py py2app        # full standalone build, in dist/
 ```
 
 Note: without an Apple Developer certificate and notarization, macOS Gatekeeper will show a warning the first time you open an unsigned build (right-click → Open bypasses this once).
 
 ## QGIS plugin
 
-A companion QGIS plugin lives in [`qgis-plugin/`](qgis-plugin/), sharing its GPX-combining and Strava logic with the desktop app via [`core/`](core/). It lets you load GPX tracks as styled QGIS layers (with an OpenStreetMap basemap and directional arrows), import Strava activities, and combine/export — without leaving QGIS.
+A companion QGIS plugin lives in [`qgis-plugin/`](qgis-plugin/), sharing its GPX-combining and Strava logic with the desktop app via [`core/`](core/). It lets you load GPX tracks as styled QGIS layers (with an OpenStreetMap basemap and directional arrows), import activities from Strava (with gear shown per activity), upload the combined result back to Strava, and combine/export — without leaving QGIS.
 
 **Status: beta, tested on macOS only so far** — the code is platform-independent Python/Qt/QGIS APIs, but Windows/Linux haven't been verified yet.
 
 **Requires QGIS 3.x — not compatible with QGIS 4.** This is enforced in `metadata.txt` (`qgisMaximumVersion=3.99.0`), so QGIS 4 won't offer to install it. QGIS 4 support is on the [roadmap](#roadmap) once the plugin is out of beta and more thoroughly tested — not before.
 
+The plugin's window title shows its own version (e.g. `GPX Combiner v0.3.9-beta`), handy if you have more than one install around (a dev symlink and a separately installed `.zip`, say) and need to tell at a glance which one you're looking at.
+
 ### Install the beta
 
-The plugin's `.zip` is published alongside the desktop app on the [**v3.6.3 release**](https://github.com/florentchevallier/GPX-Combiner/releases/tag/v3.6.3) (and on [every release](https://github.com/florentchevallier/GPX-Combiner/releases) from here on).
+The plugin's `.zip` is published alongside the desktop app on each [**GitHub release**](https://github.com/florentchevallier/GPX-Combiner/releases) from here on.
 
-1. Download `gpx_combiner-0.2.0-beta.zip` from that release's **Assets**
+1. Download the `gpx_combiner-<version>-beta.zip` file from the [latest release](https://github.com/florentchevallier/GPX-Combiner/releases/latest)'s **Assets**
 2. In QGIS: **Plugins → Manage and Install Plugins → Install from ZIP**, select the downloaded file
 3. If it doesn't show up afterward, check "Show also experimental plugins" under **Plugins → Manage and Install Plugins → Settings** — this beta is still flagged experimental
 
@@ -263,4 +275,4 @@ See [`CHANGELOG.md`](CHANGELOG.md) for the full version history of both the desk
 
 ---
 
-<p align="center"><sub>Version 3.7.4</sub></p>
+<p align="center"><sub>Version 3.7.7</sub></p>
