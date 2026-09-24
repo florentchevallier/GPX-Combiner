@@ -201,7 +201,7 @@ Make sure your Strava application's **Authorization Callback Domain** is set to 
 ## Privacy
 
 - All data stays local: GPX files, Strava credentials, and downloaded activities are only ever written to your own computer.
-- The only network calls this app makes are to Strava's official API (`strava.com`) when you explicitly use the Strava import/upload features, and to OpenStreetMap's tile server when you open the map preview.
+- The only network calls this app makes are to Strava's official API (`strava.com`) when you explicitly use the Strava import/upload features, to OpenStreetMap's Nominatim service (`nominatim.openstreetmap.org`) to resolve an activity's starting city in the Strava import list, and to OpenStreetMap's tile server when you open the map preview.
 - Nothing is sent to any third-party analytics, ad, or tracking service — this app has none.
 
 ## License
@@ -222,7 +222,7 @@ Note: without an Apple Developer certificate and notarization, macOS Gatekeeper 
 
 ## QGIS plugin
 
-A companion QGIS plugin lives in [`qgis-plugin/`](qgis-plugin/), sharing its GPX-combining and Strava logic with the desktop app via [`core/`](core/). It lets you load GPX tracks as styled QGIS layers (with an OpenStreetMap basemap and directional arrows), import activities from Strava (with gear shown per activity), upload the combined result back to Strava, and combine/export — without leaving QGIS.
+A companion QGIS plugin lives in [`qgis-plugin/`](qgis-plugin/), using shared GPX-combining and Strava logic from [`core/`](core/) — currently used by the plugin only; the desktop app still carries its own self-contained copy of the same logic rather than importing `core/` (unifying them is on the [roadmap](#roadmap), not done yet). It lets you load GPX tracks as styled QGIS layers (with an OpenStreetMap basemap and directional arrows), import activities from Strava (with gear shown per activity), upload the combined result back to Strava, and combine/export — without leaving QGIS.
 
 **Status: beta, tested on macOS only so far** — the code is platform-independent Python/Qt/QGIS APIs, but Windows/Linux haven't been verified yet.
 
@@ -268,6 +268,7 @@ Not commitments, just things worth doing once the essentials are solid:
 - Full pagination (10/25/50 per page + date range filter) for the plugin's Strava import, matching the desktop app's.
 - Publish the plugin to the official [QGIS Plugin Repository](https://plugins.qgis.org/) (currently install-from-ZIP only).
 - Verify Windows/Linux compatibility for the plugin.
+- Migrate the desktop app to actually import `core/` instead of carrying its own copy of the same logic, so the two stop being able to drift apart.
 
 ## Changelog
 
