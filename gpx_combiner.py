@@ -85,7 +85,7 @@ def resource_path(filename):
     script."""
     base = getattr(sys, "_MEIPASS", SCRIPT_DIR)
     return os.path.join(base, filename)
-APP_VERSION = "3.7.7"
+APP_VERSION = "3.7.8"
 CONFIG_PATH = os.path.join(SCRIPT_DIR, "strava_config.json")
 APP_CONFIG_PATH = os.path.join(SCRIPT_DIR, "app_config.json")  # app-wide settings (language...), kept
                                                                  # separate from Strava credentials
@@ -183,6 +183,10 @@ TR = {
         "upload_status_done": "Activité créée avec succès.",
         "upload_status_error": "Échec de l'envoi :\n{err}",
         "upload_status_timeout": "Strava met anormalement longtemps à traiter le fichier — réessaie plus tard.",
+        "upload_retry": "Réessayer",
+        "upload_duplicate_hint": "Si tu viens de supprimer l'activité d'origine sur Strava, attends quelques "
+                                  "instants (il arrive que Strava mette un peu de temps à s'en apercevoir) "
+                                  "puis réessaie. Le fichier combiné n'a pas été perdu, rien à refaire.",
         "upload_view_on_strava": "Voir sur Strava",
         "strava_settings_btn": "⚙ Réglages Strava",
         "strava_settings_title": "Réglages Strava",
@@ -305,6 +309,10 @@ TR = {
         "upload_status_done": "Activity created successfully.",
         "upload_status_error": "Upload failed:\n{err}",
         "upload_status_timeout": "Strava is taking unusually long to process this — try again later.",
+        "upload_retry": "Try again",
+        "upload_duplicate_hint": "If you just deleted the original activity on Strava, wait a moment "
+                                  "(Strava can take a little while to notice) and try again. Your combined "
+                                  "file hasn't been lost, there's nothing to redo.",
         "upload_view_on_strava": "View on Strava",
         "strava_settings_btn": "⚙ Strava settings",
         "strava_settings_title": "Strava settings",
@@ -425,6 +433,10 @@ TR = {
         "upload_status_done": "Actividad creada con éxito.",
         "upload_status_error": "Error al subir:\n{err}",
         "upload_status_timeout": "Strava está tardando más de lo normal en procesar esto — inténtalo más tarde.",
+        "upload_retry": "Reintentar",
+        "upload_duplicate_hint": "Si acabas de eliminar la actividad original en Strava, espera un momento "
+                                  "(a veces Strava tarda un poco en darse cuenta) y vuelve a intentarlo. Tu "
+                                  "archivo combinado no se ha perdido, no hay nada que rehacer.",
         "upload_view_on_strava": "Ver en Strava",
         "strava_settings_btn": "⚙ Ajustes de Strava",
         "strava_settings_title": "Ajustes de Strava",
@@ -546,6 +558,11 @@ TR = {
         "upload_status_done": "Aktivität erfolgreich erstellt.",
         "upload_status_error": "Hochladen fehlgeschlagen:\n{err}",
         "upload_status_timeout": "Strava braucht ungewöhnlich lange — versuche es später erneut.",
+        "upload_retry": "Erneut versuchen",
+        "upload_duplicate_hint": "Falls du die ursprüngliche Aktivität gerade auf Strava gelöscht hast, warte "
+                                  "einen Moment (Strava braucht dafür manchmal etwas Zeit) und versuche es "
+                                  "erneut. Deine kombinierte Datei ist nicht verloren, nichts muss wiederholt "
+                                  "werden.",
         "upload_view_on_strava": "Auf Strava ansehen",
         "strava_settings_btn": "⚙ Strava-Einstellungen",
         "strava_settings_title": "Strava-Einstellungen",
@@ -2111,6 +2128,10 @@ class UploadProgressWindow(tk.Toplevel):
         self.resizable(False, False)
         self.protocol("WM_DELETE_WINDOW", lambda: None)  # ignore close while uploading
 
+        self._client = client
+        self._filepath = filepath
+        self._name = name
+
         frame = ttk.Frame(self, padding=16)
         frame.pack()
         self.status_var = tk.StringVar(value=self.t("upload_status_uploading"))
@@ -2119,11 +2140,20 @@ class UploadProgressWindow(tk.Toplevel):
         btn_row = ttk.Frame(frame)
         btn_row.pack(pady=(14, 0))
         self.view_btn = ttk.Button(btn_row, text=self.t("upload_view_on_strava"), command=self._open_activity)
+        self.retry_btn = ttk.Button(btn_row, text=self.t("upload_retry"), command=self._retry)
         self.close_btn = ttk.Button(btn_row, text=self.t("close"), command=self._close, state="disabled")
         self.close_btn.pack(side="right")
         self._activity_id = None
 
-        threading.Thread(target=self._run, args=(client, filepath, name), daemon=True).start()
+        self._start_upload()
+
+    def _start_upload(self):
+        self.status_var.set(self.t("upload_status_uploading"))
+        self.view_btn.pack_forget()
+        self.retry_btn.pack_forget()
+        self.close_btn.state(["disabled"])
+        self.protocol("WM_DELETE_WINDOW", lambda: None)
+        threading.Thread(target=self._run, args=(self._client, self._filepath, self._name), daemon=True).start()
 
     def _run(self, client, filepath, name):
         try:
@@ -2161,9 +2191,16 @@ class UploadProgressWindow(tk.Toplevel):
         self.protocol("WM_DELETE_WINDOW", self._close)
 
     def _on_error(self, err):
-        self.status_var.set(self.t("upload_status_error").format(err=err))
+        message = self.t("upload_status_error").format(err=err)
+        if "duplicate" in err.lower():
+            message += "\n\n" + self.t("upload_duplicate_hint")
+            self.retry_btn.pack(side="left")
+        self.status_var.set(message)
         self.close_btn.state(["!disabled"])
         self.protocol("WM_DELETE_WINDOW", self._close)
+
+    def _retry(self):
+        self._start_upload()
 
     def _open_activity(self):
         if self._activity_id:
