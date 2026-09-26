@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>GPX Combiner mobile</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+
+  <!-- PWA: installable on the home screen (Android + iOS) -->
+  <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+  <meta name="theme-color" content="#fc4c02">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='img/icon-180.png') }}">
+  <link rel="icon" href="{{ url_for('static', filename='img/icon-192.png') }}">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="GPX Combiner">
+</head>
+<body>
+
+  <main id="app">
+
+    <!-- ===================== Screen: login ===================== -->
+    <section id="view-splash" class="view hidden">
+      <h1>GPX Combiner <span class="accent">mobile</span></h1>
+      <p class="intro">
+        Combine your latest Strava activities into one, and send the
+        result back to Strava — straight from your phone.
+      </p>
+      <a class="btn btn-primary" href="/login">Connect with Strava</a>
+    </section>
+
+    <!-- ===================== Screen: home (logged in) ===================== -->
+    <section id="view-home" class="view hidden">
+      <div class="page-header">
+        <img class="app-logo" src="{{ url_for('static', filename='img/logo.png') }}" alt="GPX Combiner logo">
+        <div class="page-header-text">
+          <div id="user-label"></div>
+          <label class="pro-toggle">
+            <input type="checkbox" id="pro-mode-toggle">
+            Pro mode (choose which data to keep: HR, cadence, power, temperature)
+          </label>
+        </div>
+        <a class="btn btn-small" href="/logout">Log out</a>
+      </div>
+
+      <div id="pro-mode-panel" class="pro-panel hidden">
+        <label><input type="checkbox" id="include-hr" checked> Heart rate</label>
+        <label><input type="checkbox" id="include-cadence" checked> Cadence</label>
+        <label><input type="checkbox" id="include-power" checked> Power</label>
+        <label><input type="checkbox" id="include-temp" checked> Temperature</label>
+      </div>
+
+      <h2>Recent activities</h2>
+      <ul id="activity-list" class="activity-list"></ul>
+
+      <button id="load-more-btn" class="btn btn-secondary hidden">Load 5 more</button>
+
+      <p id="home-error" class="error hidden"></p>
+
+      <button id="combine-btn" class="btn btn-primary" disabled>
+        Combine selected activities
+      </button>
+    </section>
+
+    <!-- ===================== Screen: review before upload ===================== -->
+    <section id="view-review" class="view hidden">
+      <div class="page-header">
+        <img class="app-logo" src="{{ url_for('static', filename='img/logo.png') }}" alt="GPX Combiner logo">
+        <div class="page-header-text">
+          <h2>Review before sending</h2>
+          <p class="hint">
+            If you want to delete the original activities on Strava to avoid a
+            duplicate, do it now, before sending — you can open each one below:
+          </p>
+        </div>
+      </div>
+
+      <ul id="source-activity-links" class="source-links"></ul>
+
+      <label class="field-label" for="activity-name">Combined activity name</label>
+      <input type="text" id="activity-name" class="text-input">
+
+      <label class="field-label" for="activity-type">Sport</label>
+      <select id="activity-type" class="text-input"></select>
+
+      <p id="review-error" class="error hidden"></p>
+      <p id="review-status" class="hint hidden"></p>
+
+      <button id="upload-btn" class="btn btn-primary">Upload to Strava</button>
+      <button id="retry-upload-btn" class="btn btn-secondary hidden">Retry</button>
+      <button id="back-to-home-btn" class="btn btn-text">← Back to list</button>
+    </section>
+
+    <!-- ===================== Screen: success ===================== -->
+    <section id="view-success" class="view hidden">
+      <h2>Sent to Strava ✓</h2>
+      <a id="success-link" class="btn btn-primary" href="#" target="_blank" rel="noopener">
+        View activity on Strava
+      </a>
+      <button id="restart-btn" class="btn btn-text">← Combine more activities</button>
+    </section>
+
+  </main>
+
+  <footer class="app-footer">
+    Hitting a limitation here?
+    <a href="https://github.com/florentchevallier/GPX-Combiner" target="_blank" rel="noopener">The desktop app</a>
+    does it all, including map preview and importing local GPX files.
+  </footer>
+
+  <script>
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("{{ url_for('static', filename='sw.js') }}");
+    }
+  </script>
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
