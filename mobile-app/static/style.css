@@ -48,6 +48,21 @@ h2 { font-size: 1.1rem; margin: 20px 0 10px; }
 .btn-small { width: auto; padding: 8px 14px; font-size: 0.85rem; background: var(--bg-alt); color: var(--text); border: 1px solid var(--border); }
 .btn-text { background: none; color: var(--muted); text-decoration: underline; padding: 8px; }
 
+.install-hint {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: 32px;
+  padding: 20px 16px;
+  border-radius: 12px;
+  background: var(--bg-alt);
+  text-align: center;
+}
+.install-hint-icon { color: var(--accent); margin-bottom: 10px; }
+.install-hint p { margin: 0 0 12px; color: var(--muted); font-size: 0.9rem; line-height: 1.4; max-width: 300px; }
+.install-hint p strong { color: var(--text); }
+.install-hint-instructions { margin-bottom: 0 !important; font-size: 0.8rem !important; }
+
 .page-header {
   display: flex;
   align-items: center;

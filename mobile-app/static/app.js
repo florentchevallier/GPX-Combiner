@@ -102,12 +102,56 @@ async function init() {
   const me = await res.json();
   if (!me.logged_in) {
     showView("view-splash");
+    setupInstallHint();
     return;
   }
   document.getElementById("user-label").textContent =
     `Logged in as ${me.firstname} ${me.lastname}`;
   showView("view-home");
   await loadActivities();
+}
+
+// ---------------------------------------------------------------------------
+// "Install as an app" hint (splash screen only, first-time visitors)
+// ---------------------------------------------------------------------------
+
+function isRunningStandalone() {
+  return window.matchMedia("(display-mode: standalone)").matches
+    || window.navigator.standalone === true; // legacy iOS Safari flag
+}
+
+function setupInstallHint() {
+  if (isRunningStandalone()) return; // already installed — nothing to suggest
+
+  const hint = document.getElementById("install-hint");
+  const btn = document.getElementById("install-btn");
+  const instructions = document.getElementById("install-instructions");
+  hint.classList.remove("hidden");
+
+  const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  if (isIOS) {
+    // No install API on iOS Safari — only the manual Share-sheet route exists.
+    instructions.textContent = 'Tap the Share icon, then "Add to Home Screen".';
+    instructions.classList.remove("hidden");
+    return;
+  }
+
+  // Android/Chrome: offer a real install button once the browser says the
+  // app is installable; if that event never fires (browser doesn't support
+  // it, or already dismissed this session), the fallback instructions below
+  // still cover it.
+  window.addEventListener("beforeinstallprompt", (event) => {
+    event.preventDefault();
+    btn.classList.remove("hidden");
+    btn.onclick = async () => {
+      btn.disabled = true;
+      event.prompt();
+      await event.userChoice;
+      btn.classList.add("hidden");
+    };
+  });
+  instructions.textContent = 'Or tap the browser menu (⋮) and choose "Add to Home screen".';
+  instructions.classList.remove("hidden");
 }
 
 async function loadActivities() {

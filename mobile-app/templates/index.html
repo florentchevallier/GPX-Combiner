@@ -33,6 +33,18 @@
         result back to Strava — straight from your phone.
       </p>
       <a class="btn btn-primary" href="/login">Connect with Strava</a>
+
+      <div id="install-hint" class="install-hint hidden">
+        <svg class="install-hint-icon" width="56" height="56" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <rect x="14" y="4" width="28" height="48" rx="6" stroke="currentColor" stroke-width="2.5"/>
+          <line x1="14" y1="42" x2="42" y2="42" stroke="currentColor" stroke-width="2.5"/>
+          <circle cx="44" cy="44" r="10" fill="currentColor"/>
+          <path d="M44 39v10M39 44h10" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/>
+        </svg>
+        <p><strong>Tip:</strong> install GPX Combiner on your home screen for quick, full-screen access — no browser bar, just tap and go.</p>
+        <button id="install-btn" class="btn btn-small hidden" type="button">Install app</button>
+        <p id="install-instructions" class="install-hint-instructions hidden"></p>
+      </div>
     </section>
 
     <!-- ===================== Screen: home (logged in) ===================== -->
