@@ -120,8 +120,11 @@ function renderActivityList() {
       ? `Local GPX file · ${formatDate(activity.start_date_local)}`
       : `${escapeHtml(activity.type)} · ${formatDate(activity.start_date_local)} · ` +
         `${formatDuration(activity.moving_time)} · ${formatDistance(activity.distance)}`;
+    // Local files are checked by default (the user just picked them
+    // deliberately from their phone) — Strava activities stay opt-in.
+    const checkedAttr = activity._isLocal ? "checked" : "";
     li.innerHTML = `
-      <input type="checkbox" data-id="${activity.id}">
+      <input type="checkbox" data-id="${activity.id}" ${checkedAttr}>
       <div class="activity-info">
         <div class="activity-name">${escapeHtml(activity.name)}</div>
         <div class="activity-meta">${metaLine}</div>

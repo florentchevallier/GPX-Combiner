@@ -22,17 +22,16 @@
     <section id="view-splash" class="view hidden">
       <div class="page-header">
         <a class="logo-block" href="https://github.com/florentchevallier/GPX-Combiner" target="_blank" rel="noopener">
-          <span>GPX Combiner</span>
           <img class="app-logo" src="{{ url_for('static', filename='img/logo.png') }}" alt="GPX Combiner logo">
         </a>
         <div class="page-header-text">
-          <h1><span class="accent">mobile</span></h1>
-          <p class="intro">
-            Combine your latest Strava activities into one, and send the
-            result back to Strava — straight from your phone.
-          </p>
+          <h1>GPX Combiner <span class="accent">mobile</span></h1>
         </div>
       </div>
+      <p class="intro">
+        Combine your latest Strava activities into one, and send the
+        result back to Strava — straight from your phone.
+      </p>
       <a class="btn btn-primary" href="/login">Connect with Strava</a>
     </section>
 
@@ -40,17 +39,20 @@
     <section id="view-home" class="view hidden">
       <div class="page-header">
         <a class="logo-block" href="https://github.com/florentchevallier/GPX-Combiner" target="_blank" rel="noopener">
-          <span>GPX Combiner</span>
           <img class="app-logo" src="{{ url_for('static', filename='img/logo.png') }}" alt="GPX Combiner logo">
         </a>
         <div class="page-header-text">
-          <div id="user-label"></div>
-          <label class="pro-toggle">
-            <input type="checkbox" id="pro-mode-toggle">
-            Pro mode (choose which data to keep: HR, cadence, power, temperature)
-          </label>
+          <h1>GPX Combiner <span class="accent">mobile</span></h1>
         </div>
         <a class="btn btn-small" href="/logout">Log out</a>
+      </div>
+
+      <div class="page-intro">
+        <div id="user-label"></div>
+        <label class="pro-toggle">
+          <input type="checkbox" id="pro-mode-toggle">
+          Pro mode (choose which data to keep: HR, cadence, power, temperature)
+        </label>
       </div>
 
       <div id="pro-mode-panel" class="pro-panel hidden">
@@ -79,16 +81,19 @@
     <section id="view-review" class="view hidden">
       <div class="page-header">
         <a class="logo-block" href="https://github.com/florentchevallier/GPX-Combiner" target="_blank" rel="noopener">
-          <span>GPX Combiner</span>
           <img class="app-logo" src="{{ url_for('static', filename='img/logo.png') }}" alt="GPX Combiner logo">
         </a>
         <div class="page-header-text">
-          <h2>Review before sending</h2>
-          <p id="delete-originals-hint" class="hint">
-            If you want to delete the original activities on Strava to avoid a
-            duplicate, do it now, before sending — you can open each one below:
-          </p>
+          <h1>GPX Combiner <span class="accent">mobile</span></h1>
         </div>
+      </div>
+
+      <div class="page-intro">
+        <h2>Review before sending</h2>
+        <p id="delete-originals-hint" class="hint">
+          If you want to delete the original activities on Strava to avoid a
+          duplicate, do it now, before sending — you can open each one below:
+        </p>
       </div>
 
       <ul id="source-activity-links" class="source-links"></ul>
@@ -109,7 +114,19 @@
 
     <!-- ===================== Screen: success ===================== -->
     <section id="view-success" class="view hidden">
-      <h2>Sent to Strava ✓</h2>
+      <div class="page-header">
+        <a class="logo-block" href="https://github.com/florentchevallier/GPX-Combiner" target="_blank" rel="noopener">
+          <img class="app-logo" src="{{ url_for('static', filename='img/logo.png') }}" alt="GPX Combiner logo">
+        </a>
+        <div class="page-header-text">
+          <h1>GPX Combiner <span class="accent">mobile</span></h1>
+        </div>
+      </div>
+
+      <div class="success-card">
+        <h2>Sent to Strava ✓</h2>
+      </div>
+
       <a id="success-link" class="btn btn-primary" href="#" target="_blank" rel="noopener">
         View activity on Strava
       </a>
