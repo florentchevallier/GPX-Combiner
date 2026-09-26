@@ -20,11 +20,19 @@
 
     <!-- ===================== Screen: login ===================== -->
     <section id="view-splash" class="view hidden">
-      <h1>GPX Combiner <span class="accent">mobile</span></h1>
-      <p class="intro">
-        Combine your latest Strava activities into one, and send the
-        result back to Strava — straight from your phone.
-      </p>
+      <div class="page-header">
+        <a class="logo-block" href="https://github.com/florentchevallier/GPX-Combiner" target="_blank" rel="noopener">
+          <span>GPX Combiner</span>
+          <img class="app-logo" src="{{ url_for('static', filename='img/logo.png') }}" alt="GPX Combiner logo">
+        </a>
+        <div class="page-header-text">
+          <h1><span class="accent">mobile</span></h1>
+          <p class="intro">
+            Combine your latest Strava activities into one, and send the
+            result back to Strava — straight from your phone.
+          </p>
+        </div>
+      </div>
       <a class="btn btn-primary" href="/login">Connect with Strava</a>
     </section>
 
@@ -56,6 +64,9 @@
       <ul id="activity-list" class="activity-list"></ul>
 
       <button id="load-more-btn" class="btn btn-secondary hidden">Load 5 more</button>
+      <button id="load-local-btn" class="btn btn-secondary">Load local GPX files</button>
+      <button id="back-to-strava-btn" class="btn btn-text hidden">← Back to Strava activities</button>
+      <input type="file" id="local-file-input" accept=".gpx" multiple class="hidden">
 
       <p id="home-error" class="error hidden"></p>
 
@@ -73,7 +84,7 @@
         </a>
         <div class="page-header-text">
           <h2>Review before sending</h2>
-          <p class="hint">
+          <p id="delete-originals-hint" class="hint">
             If you want to delete the original activities on Strava to avoid a
             duplicate, do it now, before sending — you can open each one below:
           </p>
@@ -110,7 +121,7 @@
   <footer class="app-footer">
     Hitting a limitation here?
     <a href="https://github.com/florentchevallier/GPX-Combiner" target="_blank" rel="noopener">The desktop app</a>
-    does it all, including map preview and importing local GPX files.
+    does it all, including a map preview.
   </footer>
 
   <script>

@@ -46,6 +46,7 @@ const state = {
   activities: [],       // all activities loaded so far
   page: 1,
   combinedBlobText: null, // text content of the combined GPX, waiting to be uploaded
+  mode: "strava",       // "strava" | "local" — never mixed (see the local-import section below)
 };
 
 // ---------------------------------------------------------------------------
@@ -115,14 +116,15 @@ function renderActivityList() {
   for (const activity of state.activities) {
     const li = document.createElement("li");
     li.className = "activity-item";
+    const metaLine = activity._isLocal
+      ? `Local GPX file · ${formatDate(activity.start_date_local)}`
+      : `${escapeHtml(activity.type)} · ${formatDate(activity.start_date_local)} · ` +
+        `${formatDuration(activity.moving_time)} · ${formatDistance(activity.distance)}`;
     li.innerHTML = `
       <input type="checkbox" data-id="${activity.id}">
       <div class="activity-info">
         <div class="activity-name">${escapeHtml(activity.name)}</div>
-        <div class="activity-meta">
-          ${escapeHtml(activity.type)} · ${formatDate(activity.start_date_local)} ·
-          ${formatDuration(activity.moving_time)} · ${formatDistance(activity.distance)}
-        </div>
+        <div class="activity-meta">${metaLine}</div>
       </div>
     `;
     list.appendChild(li);
@@ -131,11 +133,13 @@ function renderActivityList() {
 }
 
 function getSelectedActivities() {
+  // Compared as strings: Strava activity ids are numbers, local-file ids
+  // are strings like "local-0" — String(a.id) makes both sides match.
   const checked = new Set(
     Array.from(document.querySelectorAll("#activity-list input[type=checkbox]:checked"))
-      .map(cb => Number(cb.dataset.id))
+      .map(cb => cb.dataset.id)
   );
-  return state.activities.filter(a => checked.has(a.id));
+  return state.activities.filter(a => checked.has(String(a.id)));
 }
 
 function updateCombineButtonState() {
@@ -179,6 +183,77 @@ function getIncludeSettings() {
 }
 
 // ---------------------------------------------------------------------------
+// Local GPX file import — an alternative source to Strava, never mixed
+// with it (replaces the activity list rather than appending to it).
+// ---------------------------------------------------------------------------
+
+// Reads the file name and start date out of a GPX file, the same way the
+// desktop app locates a track's start time: <metadata><time> if present,
+// else the first <trkpt><time>. Returns null if the file isn't valid XML.
+function parseLocalGpxFile(filename, text) {
+  const doc = new DOMParser().parseFromString(text, "application/xml");
+  if (doc.querySelector("parsererror")) return null;
+
+  const nameEl = doc.querySelector("metadata > name") || doc.querySelector("trk > name");
+  const name = (nameEl && nameEl.textContent.trim()) || filename.replace(/\.gpx$/i, "");
+
+  const timeEl = doc.querySelector("metadata > time") || doc.querySelector("trkpt > time");
+  const startDate = timeEl ? timeEl.textContent.trim() : null;
+  if (!startDate) return null; // no usable date to sort/name by
+
+  return { name, startDate };
+}
+
+document.getElementById("load-local-btn").addEventListener("click", () => {
+  document.getElementById("local-file-input").click();
+});
+
+document.getElementById("local-file-input").addEventListener("change", async (e) => {
+  const files = Array.from(e.target.files || []);
+  e.target.value = ""; // allow re-selecting the same file(s) later
+  if (files.length === 0) return;
+
+  clearHomeError();
+  const parsed = [];
+  for (const file of files) {
+    const text = await file.text();
+    const meta = parseLocalGpxFile(file.name, text);
+    if (!meta) {
+      showHomeError(`"${file.name}" doesn't look like a valid GPX file with a track date — skipped.`);
+      continue;
+    }
+    parsed.push({
+      id: `local-${parsed.length}-${file.name}`,
+      name: meta.name,
+      type: null,
+      start_date: meta.startDate,
+      start_date_local: meta.startDate,
+      distance: null,
+      moving_time: null,
+      _isLocal: true,
+      _localContent: text,
+    });
+  }
+  if (parsed.length === 0) return;
+
+  state.mode = "local";
+  state.activities = parsed;
+  renderActivityList();
+  document.getElementById("load-more-btn").classList.add("hidden");
+  document.getElementById("back-to-strava-btn").classList.remove("hidden");
+});
+
+document.getElementById("back-to-strava-btn").addEventListener("click", async () => {
+  state.mode = "strava";
+  state.activities = [];
+  state.page = 1;
+  clearHomeError();
+  document.getElementById("back-to-strava-btn").classList.add("hidden");
+  document.getElementById("load-more-btn").classList.remove("hidden");
+  await loadActivities();
+});
+
+// ---------------------------------------------------------------------------
 // Combine
 // ---------------------------------------------------------------------------
 
@@ -199,10 +274,15 @@ document.getElementById("combine-btn").addEventListener("click", async () => {
   combineBtn.textContent = "Combining…";
 
   try {
+    const body = state.mode === "local"
+      ? { local_files: selected.map(a => ({ name: a.name, content: a._localContent })),
+          include: getIncludeSettings() }
+      : { activities: selected, include: getIncludeSettings() };
+
     const res = await fetch("/combine", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ activities: selected, include: getIncludeSettings() }),
+      body: JSON.stringify(body),
     });
 
     if (!res.ok) {
@@ -230,33 +310,42 @@ function openReviewScreen(selectedActivities) {
   const sorted = [...selectedActivities].sort((a, b) => a.start_date.localeCompare(b.start_date));
   document.getElementById("activity-name").value = sorted.map(a => a.name).join(" + ");
 
-  // Manual-deletion links to each source activity. A checkmark appears next
-  // to a link once clicked — on a small screen it's easy to lose track of
-  // which ones you've already opened/deleted.
+  // Manual-deletion links to each source activity — only relevant when the
+  // sources are actual Strava activities. Nothing to delete for a local
+  // GPX import, so that whole block is hidden in that mode.
+  const hint = document.getElementById("delete-originals-hint");
   const linksList = document.getElementById("source-activity-links");
   linksList.innerHTML = "";
-  for (const activity of sorted) {
-    const li = document.createElement("li");
+  if (state.mode === "local") {
+    hint.classList.add("hidden");
+    linksList.classList.add("hidden");
+  } else {
+    hint.classList.remove("hidden");
+    linksList.classList.remove("hidden");
+    for (const activity of sorted) {
+      const li = document.createElement("li");
 
-    const check = document.createElement("span");
-    check.className = "visited-check";
+      const check = document.createElement("span");
+      check.className = "visited-check";
 
-    const a = document.createElement("a");
-    a.href = activity.strava_url;
-    a.target = "_blank";
-    a.rel = "noopener";
-    a.textContent = `View "${activity.name}" on Strava`;
-    a.addEventListener("click", () => { check.textContent = "✅"; });
+      const a = document.createElement("a");
+      a.href = activity.strava_url;
+      a.target = "_blank";
+      a.rel = "noopener";
+      a.textContent = `View "${activity.name}" on Strava`;
+      a.addEventListener("click", () => { check.textContent = "✅"; });
 
-    li.appendChild(check);
-    li.appendChild(a);
-    linksList.appendChild(li);
+      li.appendChild(check);
+      li.appendChild(a);
+      linksList.appendChild(li);
+    }
   }
 
   // Preselected sport: the earliest activity's, since that's the one that
   // determines the combined file's <type> (see combine_gpx_files
   // server-side — the first file's <type> tag survives, the others' is
-  // lost).
+  // lost). Local files have no Strava "type" to map from, so the dropdown
+  // just keeps its first option and the user picks manually.
   const select = document.getElementById("activity-type");
   select.innerHTML = "";
   for (const choice of SPORT_CHOICES) {
@@ -265,9 +354,11 @@ function openReviewScreen(selectedActivities) {
     opt.textContent = choice.label;
     select.appendChild(opt);
   }
-  const earliest = sorted[0];
-  const defaultSport = STRAVA_TYPE_TO_SPORT_CHOICE[earliest.type];
-  if (defaultSport) select.value = defaultSport;
+  if (state.mode !== "local") {
+    const earliest = sorted[0];
+    const defaultSport = STRAVA_TYPE_TO_SPORT_CHOICE[earliest.type];
+    if (defaultSport) select.value = defaultSport;
+  }
 
   document.getElementById("review-error").classList.add("hidden");
   document.getElementById("review-status").classList.add("hidden");
@@ -363,11 +454,15 @@ function showSuccess(activityId) {
 }
 
 document.getElementById("restart-btn").addEventListener("click", () => {
-  // Reset state and go back to home, without forcing a reconnect.
+  // Reset state and go back to home, without forcing a reconnect. Always
+  // starts fresh on the Strava list, even if the previous combine used
+  // local files.
   state.activities = [];
   state.page = 1;
   state.combinedBlobText = null;
+  state.mode = "strava";
   document.getElementById("load-more-btn").classList.remove("hidden");
+  document.getElementById("back-to-strava-btn").classList.add("hidden");
   showView("view-home");
   loadActivities();
 });
