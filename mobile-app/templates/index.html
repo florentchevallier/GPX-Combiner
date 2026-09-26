@@ -141,7 +141,7 @@
     Hitting a limitation here?
     <a href="https://github.com/florentchevallier/GPX-Combiner" target="_blank" rel="noopener">The desktop app</a>
     does it all, including a map preview.
-    <div class="build-tag">build {{ build_id }}</div>
+    <div class="build-tag">build {{ build_id | default("?", true) }}</div>
   </footer>
 
   <script>
