@@ -204,7 +204,14 @@ function parseLocalGpxFile(filename, text) {
   const startDate = timeEl ? timeEl.textContent.trim() : null;
   if (!startDate) return null; // no usable date to sort/name by
 
-  return { name, startDate };
+  // Many GPX files (Strava's own exports, and files this app previously
+  // produced) carry a <type> tag using the same values as SPORT_CHOICES
+  // (e.g. "running", "cycling") — read it so the sport dropdown can be
+  // preselected, same as it is for Strava-sourced activities.
+  const typeEl = doc.querySelector("trk > type");
+  const gpxType = typeEl ? typeEl.textContent.trim() : null;
+
+  return { name, startDate, gpxType };
 }
 
 document.getElementById("load-local-btn").addEventListener("click", () => {
@@ -235,6 +242,7 @@ document.getElementById("local-file-input").addEventListener("change", async (e)
       moving_time: null,
       _isLocal: true,
       _localContent: text,
+      _gpxType: meta.gpxType,
     });
   }
   if (parsed.length === 0) return;
@@ -347,8 +355,7 @@ function openReviewScreen(selectedActivities) {
   // Preselected sport: the earliest activity's, since that's the one that
   // determines the combined file's <type> (see combine_gpx_files
   // server-side — the first file's <type> tag survives, the others' is
-  // lost). Local files have no Strava "type" to map from, so the dropdown
-  // just keeps its first option and the user picks manually.
+  // lost).
   const select = document.getElementById("activity-type");
   select.innerHTML = "";
   for (const choice of SPORT_CHOICES) {
@@ -357,8 +364,17 @@ function openReviewScreen(selectedActivities) {
     opt.textContent = choice.label;
     select.appendChild(opt);
   }
-  if (state.mode !== "local") {
-    const earliest = sorted[0];
+  const earliest = sorted[0];
+  if (state.mode === "local") {
+    // Local files carry their own <type> tag (from Strava's own exports or
+    // a previous run of this app), already using the same values as
+    // SPORT_CHOICES — use it directly if recognized, else leave the first
+    // option selected for the user to pick manually.
+    const validValues = new Set(SPORT_CHOICES.map(c => c.value));
+    if (earliest._gpxType && validValues.has(earliest._gpxType)) {
+      select.value = earliest._gpxType;
+    }
+  } else {
     const defaultSport = STRAVA_TYPE_TO_SPORT_CHOICE[earliest.type];
     if (defaultSport) select.value = defaultSport;
   }
@@ -382,6 +398,35 @@ function applySelectedSportToGpx(gpxText, sportValue) {
   }
   return gpxText.replace("</name>", `</name>\n    <type>${sportValue}</type>`);
 }
+
+// Strips characters that aren't safe in a filename on common OSes.
+function sanitizeFilename(name) {
+  return name.replace(/[\\/:*?"<>|]/g, "_").trim() || "combined-activity";
+}
+
+// Saves the combined GPX straight to the phone/computer's downloads,
+// with the currently chosen name and sport applied — available both
+// before and after uploading to Strava (the name/sport fields and
+// state.combinedBlobText are never cleared until "Combine more
+// activities" is pressed, so this works from either screen).
+function downloadCombinedGpx() {
+  const name = document.getElementById("activity-name").value.trim() || "Combined activity";
+  const sport = document.getElementById("activity-type").value;
+  const gpxText = applySelectedSportToGpx(state.combinedBlobText, sport);
+
+  const blob = new Blob([gpxText], { type: "application/gpx+xml" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${sanitizeFilename(name)}.gpx`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+document.getElementById("download-btn").addEventListener("click", downloadCombinedGpx);
+document.getElementById("download-btn-success").addEventListener("click", downloadCombinedGpx);
 
 async function doUpload() {
   const name = document.getElementById("activity-name").value.trim() || "Combined activity";
