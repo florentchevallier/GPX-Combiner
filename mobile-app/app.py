@@ -47,6 +47,12 @@ STRAVA_CLIENT_SECRET = os.environ["STRAVA_CLIENT_SECRET"]
 APP_BASE_URL = os.environ.get("APP_BASE_URL", "http://localhost:5000")
 OAUTH_REDIRECT_URI = f"{APP_BASE_URL}/oauth/callback"
 
+# Not a real version number (mobile has none, by design — see README): just
+# a discreet build counter in the footer, incremented by one on every file
+# handed over, so it's obvious at a glance whether the phone is actually
+# running the latest deploy or an older cached one.
+BUILD_ID = "11"
+
 app = Flask(__name__)
 app.secret_key = os.environ["FLASK_SECRET_KEY"]
 
@@ -62,10 +68,20 @@ init_db()
 # ---------------------------------------------------------------------------
 # Single page (the frontend handles everything else in JS, see static/app.js)
 # ---------------------------------------------------------------------------
+#
+# The app itself is served under /app/ — deliberately NOT at the domain
+# root — because that's also the installed PWA's manifest `scope`
+# (static/manifest.json). Keeping /login and /oauth/callback outside that
+# scope matters: see the comment on oauth_callback() below for why.
 
 @app.route("/")
+def root():
+    return redirect("/app/")
+
+
+@app.route("/app/")
 def index():
-    return render_template("index.html")
+    return render_template("index.html", build_id=BUILD_ID)
 
 
 # ---------------------------------------------------------------------------
@@ -86,13 +102,42 @@ def login():
     return redirect(f"{StravaClient.AUTHORIZE_URL}?{urllib.parse.urlencode(params)}")
 
 
+def _oauth_error_page(message):
+    return render_template("oauth_error.html", message=message), 400
+
+
 @app.route("/oauth/callback")
 def oauth_callback():
-    """Strava redirects here with a `code` to exchange for tokens."""
+    """Strava redirects here with a `code` to exchange for tokens.
+
+    This route (like /login) lives OUTSIDE the installed PWA's manifest
+    scope ("/app/") on purpose. On Android, a URL that falls INSIDE an
+    installed PWA's scope can get "link-captured": the OS hands that
+    navigation to the standalone app window instead of letting the current
+    browser tab load it. Since this URL carries a Strava authorization
+    `code` that can only ever be exchanged once, that hand-off used to
+    trigger a race — the browser tab AND the freshly-opened app both tried
+    to exchange the same code, and whichever lost got Strava's
+    "AuthorizationCode ... invalid" error (shown as a raw, unstyled page,
+    which is what looked like a "desktop mode" bug). Keeping /login and
+    /oauth/callback outside /app/ keeps the whole Strava round-trip inside
+    a single browser tab; the installed app only opens at the very end, on
+    the plain /app/ URL, by which point there's no code left to reuse.
+
+    The session check below is an extra safety net for any other browser
+    with similar link-capturing behaviour: if a session already exists when
+    this runs, some other near-simultaneous request already completed the
+    login successfully, so this one is a harmless duplicate rather than a
+    real failure.
+    """
     code = request.args.get("code")
     error = request.args.get("error")
     if error or not code:
-        return f"Authorization denied or cancelled ({error or 'no code received'}).", 400
+        if session.get("athlete_id"):
+            return redirect("/app/")
+        return _oauth_error_page(
+            "Authorization was cancelled or denied on Strava's side."
+        )
 
     config = {"client_id": STRAVA_CLIENT_ID, "client_secret": STRAVA_CLIENT_SECRET}
     client = StravaClient(config)
@@ -100,7 +145,12 @@ def oauth_callback():
         client._exchange_code(code)  # private method of the shared module, reused as-is
         athlete = client.get_athlete()
     except (StravaAuthError, StravaAPIError) as e:
-        return f"Strava login failed: {e}", 400
+        if session.get("athlete_id"):
+            return redirect("/app/")
+        return _oauth_error_page(
+            "Strava didn't accept that authorization. This can happen if the "
+            "connection page was opened twice — just try connecting again."
+        )
 
     upsert_user(
         athlete_id=athlete["id"],
@@ -112,13 +162,13 @@ def oauth_callback():
     )
     session.permanent = True
     session["athlete_id"] = athlete["id"]
-    return redirect("/")
+    return redirect("/app/")
 
 
 @app.route("/logout")
 def logout():
     session.clear()
-    return redirect("/")
+    return redirect("/app/")
 
 
 @app.route("/me")
@@ -296,7 +346,7 @@ def upload():
 
     try:
         with _ClientSession(athlete_id, user) as client:
-            upload_id = client.upload_gpx(tmp_path, name=name)
+            upload_id = client.upload_gpx(tmp_path, name=name, description="Created with GPX Combiner")
             deadline = time.time() + 60
             while time.time() < deadline:
                 status = client.check_upload(upload_id)
