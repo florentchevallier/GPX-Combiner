@@ -42,6 +42,24 @@ const STRAVA_TYPE_TO_SPORT_CHOICE = {
 const MAX_ACTIVITIES = 10;
 const PAGE_SIZE = 5;
 
+// ---------------------------------------------------------------------------
+// Post-login reload (cosmetic-only fix)
+// ---------------------------------------------------------------------------
+// Landing here right after the Strava OAuth redirect chain, the very first
+// paint can render zoomed out / "desktop-looking" even though the viewport
+// meta tag is correct — a rendering-only quirk of that specific navigation
+// path. One reload always fixes it. Guarded with sessionStorage so it only
+// ever fires once per session, never in a loop.
+(function forcePostLoginReload() {
+  const params = new URLSearchParams(location.search);
+  if (params.get("just_logged_in") !== "1") return;
+  if (sessionStorage.getItem("gpxc_post_login_reload_done") === "1") return;
+  sessionStorage.setItem("gpxc_post_login_reload_done", "1");
+  setTimeout(() => {
+    location.replace(location.pathname); // drop the query param, avoid a back-button loop
+  }, 300);
+})();
+
 const state = {
   activities: [],       // all activities loaded so far
   page: 1,

@@ -51,7 +51,7 @@ OAUTH_REDIRECT_URI = f"{APP_BASE_URL}/oauth/callback"
 # a discreet build counter in the footer, incremented by one on every file
 # handed over, so it's obvious at a glance whether the phone is actually
 # running the latest deploy or an older cached one.
-BUILD_ID = "11"
+BUILD_ID = "12"
 
 app = Flask(__name__)
 app.secret_key = os.environ["FLASK_SECRET_KEY"]
@@ -162,7 +162,14 @@ def oauth_callback():
     )
     session.permanent = True
     session["athlete_id"] = athlete["id"]
-    return redirect("/app/")
+    # `just_logged_in=1` lets the frontend force a single reload shortly after
+    # landing (see static/app.js). This is unrelated to the duplicate-code
+    # race that /login and /oauth/callback being outside the PWA's scope
+    # already fixes — it's a separate, purely cosmetic issue: the very first
+    # paint of this page, reached through this exact redirect chain, can
+    # render zoomed out/"desktop-looking" even though the viewport meta tag
+    # is correct; one reload always fixes it.
+    return redirect("/app/?just_logged_in=1")
 
 
 @app.route("/logout")
