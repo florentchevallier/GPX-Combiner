@@ -471,7 +471,8 @@ class _UploadWorker(QObject):
 
     def run(self):
         try:
-            upload_id = self.client.upload_gpx(self.filepath, name=self.name)
+            upload_id = self.client.upload_gpx(
+                self.filepath, name=self.name, description="Created with GPX Combiner")
         except (StravaAPIError, StravaAuthError, OSError) as e:
             self.error.emit(str(e))
             return

@@ -4,6 +4,13 @@ This summarizes what changed in each version, for both the desktop app (`gpx_com
 
 ## Desktop app
 
+### 3.7.9
+- Combined GPX now gets its own `<name>` (the source files' names joined with " + "), instead of keeping whichever source file happened to sort first chronologically
+- `creator="GPX Combiner"` is now always the first attribute on `<gpx>`, matching the layout Strava's own exports use, regardless of where an existing `creator` attribute sat
+- A `<link>`/`<desc>` signature ("Created with GPX Combiner", linking to the GitHub project) is added inside `<metadata>`, right before `<time>` when the file has one
+- The description is also passed to Strava's upload API alongside the file's own `<desc>`
+- The default save-dialog filename now uses the combined name too, cleaned up more thoroughly (emoji, quotes, `#`, commas, colons, apostrophes, etc. stripped; `+` and spaces handled cleanly) — previously some names couldn't be saved at all
+
 ### 3.6.x
 - Scrollable Strava activity list, so choosing 25/50 per page no longer grows the window past screen height and out of reach of the "per page" control
 - `</trkseg>` / `<trkseg>` now on separate lines when combining, for easier diffing/collapsing in a text editor
@@ -42,6 +49,9 @@ This summarizes what changed in each version, for both the desktop app (`gpx_com
 - Multi-language interface (French, English, Spanish, German)
 
 ## QGIS plugin
+
+### 0.3.11-beta
+- Same fixes as desktop app 3.7.9 (shared via `core/strava_client.py`): combined `<name>`, `creator="GPX Combiner"` moved to the first attribute, `<link>`/`<desc>` signature added inside `<metadata>`, description passed to Strava's upload API, and a cleaned-up default save filename
 
 ### 0.2.0-beta
 - Strava import: credentials dialog, OAuth authorization, browse recent activities, download selected ones as GPX (HR/cadence/power/temperature included) — downloads land silently in a system temp folder, no save-location prompt

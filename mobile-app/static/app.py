@@ -112,7 +112,11 @@ def oauth_callback():
     )
     session.permanent = True
     session["athlete_id"] = athlete["id"]
-    return redirect("/")
+    # `just_logged_in=1` lets the frontend force a one-time reload — some
+    # mobile browsers render this first post-redirect page in desktop layout
+    # after the Strava authorization round-trip, and a fresh reload fixes it
+    # (see static/app.js).
+    return redirect("/?just_logged_in=1")
 
 
 @app.route("/logout")

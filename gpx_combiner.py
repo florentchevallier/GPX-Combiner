@@ -85,7 +85,7 @@ def resource_path(filename):
     script."""
     base = getattr(sys, "_MEIPASS", SCRIPT_DIR)
     return os.path.join(base, filename)
-APP_VERSION = "3.7.8"
+APP_VERSION = "3.7.9"
 CONFIG_PATH = os.path.join(SCRIPT_DIR, "strava_config.json")
 APP_CONFIG_PATH = os.path.join(SCRIPT_DIR, "app_config.json")  # app-wide settings (language...), kept
                                                                  # separate from Strava credentials
@@ -1010,8 +1010,74 @@ def set_gpx_type(content, new_type):
     return content[:insert_pos] + f"\n    <type>{escape_xml(new_type)}</type>" + content[insert_pos:]
 
 
+NAME_TAG_RE = re.compile(r"<name>(.*?)</name>", re.I | re.S)
+GPX_PROJECT_URL = "https://github.com/florentchevallier/GPX-Combiner"
+
+
+def set_gpx_name(content, new_name):
+    """Replaces every <name> tag (metadata and/or track) with new_name —
+    used after combining, so the file reflects the combined activity's
+    name rather than whichever source file happened to sort first. Falls
+    back to inserting one right after the opening <trk> tag if the file
+    doesn't have one yet."""
+    escaped = escape_xml(new_name)
+    if NAME_TAG_RE.search(content):
+        return NAME_TAG_RE.sub(lambda m: f"<name>{escaped}</name>", content)
+    trk_match = re.search(r"<trk\b[^>]*>", content, re.I)
+    if not trk_match:
+        return content  # no <trk> to anchor on — leave the file untouched
+    insert_pos = trk_match.end()
+    return content[:insert_pos] + f"\n    <name>{escaped}</name>" + content[insert_pos:]
+
+
+def set_gpx_creator(content, creator="GPX Combiner"):
+    """Sets the <gpx creator="..."> attribute as the FIRST attribute right
+    after the tag name — matching the layout real Strava exports use
+    (<gpx creator="StravaGPX" version="1.1" ...>) — regardless of where an
+    existing creator attribute sat, since a combined file no longer
+    corresponds to any single recording device/app."""
+    stripped = re.sub(r'\s+creator="[^"]*"', "", content, count=1, flags=re.I)
+    return re.sub(r"<gpx\b", f'<gpx creator="{escape_xml(creator)}"', stripped, count=1)
+
+
+def set_gpx_description(content, description):
+    """Adds our project link and a description inside <metadata>, right
+    before <time> if the file already has one (matching real Strava
+    exports' layout) — or creates a <metadata> block (with no <time>,
+    since none exists yet) right before <trk> if the file has no metadata
+    at all."""
+    signature = (
+        f'<link href="{GPX_PROJECT_URL}">\n'
+        '      <text>GPX Combiner</text>\n'
+        '    </link>\n'
+        f'    <desc>{escape_xml(description)}</desc>'
+    )
+
+    # Inserting right after the opening <metadata> tag naturally lands
+    # before <time> when the file has one (real Strava/device exports
+    # almost always do), and is still valid GPX when it doesn't.
+    metadata_open = re.search(r"<metadata\b[^>]*>", content, re.I)
+    if metadata_open:
+        insert_pos = metadata_open.end()
+        return content[:insert_pos] + f"\n    {signature}" + content[insert_pos:]
+
+    trk_match = re.search(r"<trk\b[^>]*>", content, re.I)
+    if not trk_match:
+        return content  # no <trk> to anchor on — leave the file untouched
+    block = f"<metadata>\n    {signature}\n  </metadata>\n  "
+    return content[:trk_match.start()] + block + content[trk_match.start():]
+
+
 def sanitize_filename(name):
-    return re.sub(r'[\\/*?:"<>|]', "_", name).strip() or "activity"
+    """Strips anything that isn't a letter, digit, space, hyphen,
+    underscore, parenthesis or "+" (kept since it's the separator this app
+    itself inserts between combined activity names) — drops emoji,
+    quotes, #, commas, apostrophes, colons, etc., which otherwise make
+    some OSes refuse to save the file. Runs of whitespace collapse to a
+    single space."""
+    cleaned = re.sub(r"[^\w\s\-()+]", "", name, flags=re.UNICODE)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    return cleaned or "activity"
 
 
 _geocode_cache = {}
@@ -2157,7 +2223,7 @@ class UploadProgressWindow(tk.Toplevel):
 
     def _run(self, client, filepath, name):
         try:
-            upload_id = client.upload_gpx(filepath, name=name)
+            upload_id = client.upload_gpx(filepath, name=name, description="Created with GPX Combiner")
         except (StravaAPIError, StravaAuthError, OSError) as e:
             self.after(0, self._on_error, str(e))
             return
@@ -2491,9 +2557,14 @@ class GpxCombinerApp:
         if combined is None:
             return
 
+        default_name = " + ".join(os.path.splitext(os.path.basename(f["path"]))[0] for f in self.files)
+        combined = set_gpx_name(combined, default_name)
+        combined = set_gpx_creator(combined)
+        combined = set_gpx_description(combined, "Created with GPX Combiner")
+
         save_path = filedialog.asksaveasfilename(
             title=self.t("save_title"), defaultextension=".gpx",
-            initialfile="combined.gpx", filetypes=[("GPX", "*.gpx")],
+            initialfile=f"{sanitize_filename(default_name)}.gpx", filetypes=[("GPX", "*.gpx")],
         )
         if not save_path:
             return
@@ -2553,6 +2624,9 @@ class GpxCombinerApp:
 
         if gpx_type and gpx_type != default_type:
             combined_content = set_gpx_type(combined_content, gpx_type)
+        combined_content = set_gpx_name(combined_content, name)
+        combined_content = set_gpx_creator(combined_content)
+        combined_content = set_gpx_description(combined_content, "Created with GPX Combiner")
 
         os.makedirs(GPX_TEMP_DIR, exist_ok=True)
         upload_path = os.path.join(GPX_TEMP_DIR, f"upload_{uuid.uuid4().hex}.gpx")

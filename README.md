@@ -11,7 +11,7 @@
 <p align="center">
   <img alt="platform" src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-informational">
   <img alt="python" src="https://img.shields.io/badge/python-3.9%2B-blue">
-  <img alt="version" src="https://img.shields.io/badge/version-3.7.7-orange">
+  <img alt="version" src="https://img.shields.io/badge/version-3.7.9-orange">
   <img alt="license" src="https://img.shields.io/badge/license-GPL--3.0--or--later-blue">
 </p>
 
@@ -37,6 +37,7 @@
 - [License](#license)
 - [Packaging as a standalone app yourself](#packaging-as-a-standalone-app-yourself)
 - [QGIS plugin](#qgis-plugin)
+- [Mobile app](#mobile-app)
 - [Roadmap](#roadmap)
 - [Changelog](#changelog)
 
@@ -228,7 +229,7 @@ A companion QGIS plugin lives in [`qgis-plugin/`](qgis-plugin/), using shared GP
 
 **Requires QGIS 3.x — not compatible with QGIS 4.** This is enforced in `metadata.txt` (`qgisMaximumVersion=3.99.0`), so QGIS 4 won't offer to install it. QGIS 4 support is on the [roadmap](#roadmap) once the plugin is out of beta and more thoroughly tested — not before.
 
-The plugin's window title shows its own version (e.g. `GPX Combiner v0.3.9-beta`), handy if you have more than one install around (a dev symlink and a separately installed `.zip`, say) and need to tell at a glance which one you're looking at.
+The plugin's window title shows its own version (e.g. `GPX Combiner v0.3.11-beta`), handy if you have more than one install around (a dev symlink and a separately installed `.zip`, say) and need to tell at a glance which one you're looking at.
 
 ### Install the beta
 
@@ -260,6 +261,43 @@ ln -s "$(pwd)" "<profile plugins folder>/gpx_combiner"
 
 Then enable "GPX Combiner" the same way as above. To build your own `.zip` from source instead (e.g. after making changes), see [`build_plugin_zip.py`](build_plugin_zip.py) — it stages a clean copy (physically bundling `core/`, no symlinks or dev cruft) into `dist/`.
 
+## Mobile app
+
+A companion mobile web app lives in [`mobile-app/`](mobile-app/) — a small Flask backend + a single-page vanilla-JS frontend, installable on a phone's home screen as a **PWA** (Progressive Web App), reusing the same [`core/gpx_core.py`](core/gpx_core.py) and [`core/strava_client.py`](core/strava_client.py) logic as the desktop app and the QGIS plugin.
+
+**Status: private beta**, currently shared with a small group of friends (not a public deployment, no public sign-up) — a companion for combining a phone's own Strava activities on the go, not a replacement for the desktop app (which still offers the map preview, local GPX file support for a wider range of workflows, and QGIS integration). No version number for now — it's under active, fast-moving development while it's being tried out, so [Releases](https://github.com/florentchevallier/GPX-Combiner/releases) and [`CHANGELOG.md`](CHANGELOG.md) don't cover it; the code on `main` is the source of truth.
+
+### What it does
+
+- **View recent Strava activities** on your phone (paginated, 5 at a time, up to 10 loaded at once) and select at least two to combine.
+- **Import local GPX files instead** ("Load local GPX files" button): an alternative source to Strava, never mixed with it — picking files replaces the list rather than appending to it. Sport is auto-detected from the file's own `<type>` tag when present (matching the value Strava's own exports and this project's own files use), sorted chronologically from each file's `<time>` tag.
+- **"Pro mode"** toggle: choose which of HR / cadence / power / temperature to keep in the combined file (off by default, to keep the common case simple).
+- **Review before sending**: edit the combined activity's name (defaults to each source name joined by `" + "`) and pick a sport, with a direct link to each source Strava activity so you can delete the originals yourself first, to avoid a duplicate — deletion is **never automated** (see [Privacy](#privacy) below for why).
+- **Upload straight back to Strava**, or **download the combined GPX to your device** instead (or in addition) — the download stays available even after a successful Strava upload.
+- The combined GPX gets its own `<name>`, a `creator="GPX Combiner"` attribute, and a link/description signature in `<metadata>` — same conventions as the desktop app and QGIS plugin (see [`CHANGELOG.md`](CHANGELOG.md) 3.7.9 for details on the shared format).
+
+### Multi-user Strava setup
+
+Strava allows one API application per developer account, so everyone in the group authorizes against the **same** Client ID/Secret (Strava natively supports this — it's not a workaround); each person still logs in with their **own** Strava account and only ever sees/combines their own activities. Tokens are stored per-user (keyed by Strava athlete id) in a local SQLite database, refreshed automatically.
+
+### Running it yourself
+
+```bash
+cd mobile-app
+pip3 install -r requirements.txt   # Flask, requests, python-dotenv, gunicorn
+cp .env.example .env               # then fill in STRAVA_CLIENT_ID, STRAVA_CLIENT_SECRET, FLASK_SECRET_KEY
+PYTHONPATH=.. python3 app.py       # PYTHONPATH must point at the repo root so "core/" is importable
+```
+
+Visit `http://localhost:5000`. For a real deployment, set the same variables as actual environment variables (not a `.env` file) on your host, plus `APP_BASE_URL` (e.g. `https://your-app.onrender.com`), and set that same domain — **case-sensitive** — as the Strava application's **Authorization Callback Domain** at [strava.com/settings/api](https://www.strava.com/settings/api). Run with `gunicorn app:app` rather than the Flask dev server.
+
+**Known hosting limitation:** the current deployment uses a free-tier host whose local disk (including the SQLite token store) is wiped on every restart/spin-down after inactivity — fine for a small group of friends re-authorizing occasionally, but not for a wider audience. A persistent-storage host is on the list if this outgrows the current scale.
+
+### Security notes
+
+- `.env` (secrets) and `*.db` (the SQLite file, which holds every user's Strava tokens) must **never** be committed — both are in `.gitignore`.
+- No automated deletion of Strava activities, ever: there is no `DELETE /activities/{id}` endpoint in Strava's API, and scripting the website's own delete button would bypass its CSRF protection — a line this project won't cross even if it were technically possible. The app only ever gives you a direct link to delete an activity yourself.
+
 ## Roadmap
 
 Not commitments, just things worth doing once the essentials are solid:
@@ -276,4 +314,4 @@ See [`CHANGELOG.md`](CHANGELOG.md) for the full version history of both the desk
 
 ---
 
-<p align="center"><sub>Version 3.7.7</sub></p>
+<p align="center"><sub>Version 3.7.9</sub></p>

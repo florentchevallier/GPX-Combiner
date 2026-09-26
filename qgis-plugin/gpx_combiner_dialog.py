@@ -21,7 +21,10 @@ from gpx_core import (
     extract_sort_key, detect_extension_fields, combine_gpx_files,
     EXTENSION_FIELDS, EXTENSION_FIELD_LABELS, TRACK_COLOR_PALETTE,
 )
-from strava_client import StravaClient, StravaAuthError, read_gpx_type
+from strava_client import (
+    StravaClient, StravaAuthError, read_gpx_type,
+    set_gpx_name, set_gpx_creator, set_gpx_description, sanitize_filename,
+)
 
 OSM_XYZ_NAME = "OpenStreetMap"
 OSM_XYZ_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -350,12 +353,18 @@ class GpxCombinerDialog(QDialog):
         if skipped:
             QMessageBox.warning(self, "GPX Combiner", "No <trkseg> found in:\n" + "\n".join(skipped))
 
+        default_name = " + ".join(os.path.splitext(os.path.basename(f["path"]))[0] for f in self.files)
+        combined = set_gpx_name(combined, default_name)
+        combined = set_gpx_creator(combined)
+        combined = set_gpx_description(combined, "Created with GPX Combiner")
+
         default_save_dir = QgsSettings().value(SETTINGS_LAST_SAVE_DIR, "")
         if not default_save_dir or not os.path.isdir(default_save_dir):
             default_save_dir = os.path.join(os.path.expanduser("~"), "Downloads")
-        save_path, _ = QFileDialog.getSaveFileName(self, "Save combined file",
-                                                    os.path.join(default_save_dir, "combined.gpx"),
-                                                    "GPX files (*.gpx)")
+        save_path, _ = QFileDialog.getSaveFileName(
+            self, "Save combined file",
+            os.path.join(default_save_dir, f"{sanitize_filename(default_name)}.gpx"),
+            "GPX files (*.gpx)")
         self._bring_to_front()
         if not save_path:
             return
@@ -442,6 +451,9 @@ class GpxCombinerDialog(QDialog):
 
         if gpx_type and gpx_type != default_type:
             combined_content = set_gpx_type(combined_content, gpx_type)
+        combined_content = set_gpx_name(combined_content, name)
+        combined_content = set_gpx_creator(combined_content)
+        combined_content = set_gpx_description(combined_content, "Created with GPX Combiner")
 
         temp_dir = os.path.join(tempfile.gettempdir(), "gpx_combiner_strava")
         os.makedirs(temp_dir, exist_ok=True)

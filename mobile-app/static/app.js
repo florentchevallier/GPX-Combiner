@@ -42,6 +42,24 @@ const STRAVA_TYPE_TO_SPORT_CHOICE = {
 const MAX_ACTIVITIES = 10;
 const PAGE_SIZE = 5;
 
+// ---------------------------------------------------------------------------
+// Post-login reload workaround
+// ---------------------------------------------------------------------------
+// Right after the Strava OAuth round-trip, some mobile browsers render this
+// page's first paint in a "desktop" layout (the correct mobile layout only
+// comes back after a manual reload). Forcing one automatic reload, shortly
+// after landing, works around it. Guarded with sessionStorage so a genuine
+// rendering bug can never cause a reload loop.
+(function forcePostLoginReload() {
+  const params = new URLSearchParams(location.search);
+  if (params.get("just_logged_in") !== "1") return;
+  if (sessionStorage.getItem("gpxc_post_login_reload_done") === "1") return;
+  sessionStorage.setItem("gpxc_post_login_reload_done", "1");
+  setTimeout(() => {
+    location.replace(location.pathname); // drop the query param, avoid a back-button loop
+  }, 300);
+})();
+
 const state = {
   activities: [],       // all activities loaded so far
   page: 1,
@@ -428,26 +446,55 @@ function sanitizeFilename(name) {
   return cleaned || "combined-activity";
 }
 
-// Sets the <gpx creator="..."> attribute to identify this app, since a
-// combined file no longer corresponds to any single recording device.
+// Sets the <gpx creator="..."> attribute as the FIRST attribute right
+// after the tag name — matching the layout real Strava exports use
+// (<gpx creator="StravaGPX" version="1.1" ...>) — regardless of where an
+// existing creator attribute sat, since a combined file no longer
+// corresponds to any single recording device.
 function applyCreatorToGpx(gpxText) {
-  if (/<gpx\b[^>]*\bcreator="[^"]*"/is.test(gpxText)) {
-    return gpxText.replace(/(<gpx\b[^>]*\bcreator=")[^"]*(")/is, `$1GPX Combiner$2`);
-  }
-  // No creator attribute at all (unlikely, but just in case) — add one
-  // right after the opening "<gpx " tag name.
-  return gpxText.replace(/<gpx\b/i, `<gpx creator="GPX Combiner"`);
+  const stripped = gpxText.replace(/\s+creator="[^"]*"/i, "");
+  return stripped.replace(/<gpx\b/i, `<gpx creator="GPX Combiner"`);
 }
 
-// Builds the final GPX text (sport + name + creator applied) and the
-// plain activity name, shared by both the download button and the Strava
-// upload so the file content is always consistent between the two.
+const GPX_PROJECT_URL = "https://github.com/florentchevallier/GPX-Combiner";
+
+// Adds our project link and a description inside <metadata>, right before
+// <time> if the file already has one (matching real Strava exports'
+// layout) — or creates a <metadata> block (with no <time>, since none
+// exists yet) right before <trk> if the file has no metadata at all.
+function applyMetadataSignatureToGpx(gpxText, description) {
+  const signature =
+    `<link href="${GPX_PROJECT_URL}">\n` +
+    `      <text>GPX Combiner</text>\n` +
+    `    </link>\n` +
+    `    <desc>${escapeXmlText(description)}</desc>`;
+
+  // Inserting right after the opening <metadata> tag naturally lands
+  // before <time> when the file has one (real Strava/device exports
+  // almost always do), and is still valid GPX when it doesn't.
+  const metadataOpen = gpxText.match(/<metadata\b[^>]*>/i);
+  if (metadataOpen) {
+    const openTagEnd = metadataOpen.index + metadataOpen[0].length;
+    return gpxText.slice(0, openTagEnd) + `\n    ${signature}` + gpxText.slice(openTagEnd);
+  }
+
+  const trkMatch = gpxText.match(/<trk\b[^>]*>/i);
+  if (!trkMatch) return gpxText; // no <trk> to anchor on — leave untouched
+  const block = `<metadata>\n    ${signature}\n  </metadata>\n  `;
+  return gpxText.slice(0, trkMatch.index) + block + gpxText.slice(trkMatch.index);
+}
+
+// Builds the final GPX text (sport + name + creator + our project
+// signature applied) and the plain activity name, shared by both the
+// download button and the Strava upload so the file content is always
+// consistent between the two.
 function buildFinalGpx() {
   const name = document.getElementById("activity-name").value.trim() || "Combined activity";
   const sport = document.getElementById("activity-type").value;
   let gpxText = applySelectedSportToGpx(state.combinedBlobText, sport);
   gpxText = applyNameToGpx(gpxText, name);
   gpxText = applyCreatorToGpx(gpxText);
+  gpxText = applyMetadataSignatureToGpx(gpxText, "Created with GPX Combiner");
   return { gpxText, name };
 }
 
