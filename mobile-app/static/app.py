@@ -47,6 +47,12 @@ STRAVA_CLIENT_SECRET = os.environ["STRAVA_CLIENT_SECRET"]
 APP_BASE_URL = os.environ.get("APP_BASE_URL", "http://localhost:5000")
 OAUTH_REDIRECT_URI = f"{APP_BASE_URL}/oauth/callback"
 
+# Not a real version number (mobile has none, by design — see README): just
+# a discreet build counter in the footer, incremented by one on every file
+# handed over, so it's obvious at a glance whether the phone is actually
+# running the latest deploy or an older cached one.
+BUILD_ID = "10"
+
 app = Flask(__name__)
 app.secret_key = os.environ["FLASK_SECRET_KEY"]
 
@@ -75,7 +81,7 @@ def root():
 
 @app.route("/app/")
 def index():
-    return render_template("index.html")
+    return render_template("index.html", build_id=BUILD_ID)
 
 
 # ---------------------------------------------------------------------------
