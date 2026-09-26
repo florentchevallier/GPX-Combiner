@@ -329,14 +329,11 @@ async function doUpload() {
         "the original activity on Strava, wait a moment (Strava can take " +
         "a little while to notice) then try again. The combined file " +
         "hasn't been lost — nothing to redo.";
-      // Temporary debug line: Strava's raw message, HTML tags stripped, in
-      // case the friendly message above needs troubleshooting. Safe to
-      // remove once the duplicate-detection behaviour is understood.
       const rawEl = document.createElement("div");
       rawEl.className = "hint";
       rawEl.style.marginTop = "8px";
       rawEl.style.fontSize = "0.75rem";
-      rawEl.textContent = "Debug — raw Strava message: " + message.replace(/<[^>]*>/g, "");
+      rawEl.textContent = "Strava message: " + message.replace(/<[^>]*>/g, "");
       errorEl.appendChild(rawEl);
       retryBtn.classList.remove("hidden");
     } else {
