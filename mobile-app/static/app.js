@@ -399,9 +399,56 @@ function applySelectedSportToGpx(gpxText, sportValue) {
   return gpxText.replace("</name>", `</name>\n    <type>${sportValue}</type>`);
 }
 
-// Strips characters that aren't safe in a filename on common OSes.
+// Escapes the 3 characters that are reserved in XML text content (quotes
+// don't need escaping outside of attribute values).
+function escapeXmlText(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+// Replaces every <name>...</name> tag in the GPX (metadata and/or track)
+// with the activity name chosen on this page, so the file itself — not
+// just the separate "name" field sent to Strava's upload API — reflects
+// what the user typed, including for the locally-downloaded copy.
+function applyNameToGpx(gpxText, name) {
+  const escaped = escapeXmlText(name);
+  return gpxText.replace(/<name>.*?<\/name>/gis, `<name>${escaped}</name>`);
+}
+
+// Strips anything that isn't a letter, digit, space, hyphen, underscore,
+// parenthesis or "+" — drops emoji, quotes, #, commas, apostrophes,
+// colons, etc., which otherwise make some OSes/browsers refuse to save
+// the file. "+" is kept: it's the separator this app itself inserts
+// between combined activity names. Runs of whitespace (which stripping
+// out emoji etc. can leave behind) collapse to a single space.
 function sanitizeFilename(name) {
-  return name.replace(/[\\/:*?"<>|]/g, "_").trim() || "combined-activity";
+  const cleaned = name
+    .replace(/[^\p{L}\p{N}\s\-_()+]/gu, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return cleaned || "combined-activity";
+}
+
+// Sets the <gpx creator="..."> attribute to identify this app, since a
+// combined file no longer corresponds to any single recording device.
+function applyCreatorToGpx(gpxText) {
+  if (/<gpx\b[^>]*\bcreator="[^"]*"/is.test(gpxText)) {
+    return gpxText.replace(/(<gpx\b[^>]*\bcreator=")[^"]*(")/is, `$1GPX Combiner$2`);
+  }
+  // No creator attribute at all (unlikely, but just in case) — add one
+  // right after the opening "<gpx " tag name.
+  return gpxText.replace(/<gpx\b/i, `<gpx creator="GPX Combiner"`);
+}
+
+// Builds the final GPX text (sport + name + creator applied) and the
+// plain activity name, shared by both the download button and the Strava
+// upload so the file content is always consistent between the two.
+function buildFinalGpx() {
+  const name = document.getElementById("activity-name").value.trim() || "Combined activity";
+  const sport = document.getElementById("activity-type").value;
+  let gpxText = applySelectedSportToGpx(state.combinedBlobText, sport);
+  gpxText = applyNameToGpx(gpxText, name);
+  gpxText = applyCreatorToGpx(gpxText);
+  return { gpxText, name };
 }
 
 // Saves the combined GPX straight to the phone/computer's downloads,
@@ -410,9 +457,7 @@ function sanitizeFilename(name) {
 // state.combinedBlobText are never cleared until "Combine more
 // activities" is pressed, so this works from either screen).
 function downloadCombinedGpx() {
-  const name = document.getElementById("activity-name").value.trim() || "Combined activity";
-  const sport = document.getElementById("activity-type").value;
-  const gpxText = applySelectedSportToGpx(state.combinedBlobText, sport);
+  const { gpxText, name } = buildFinalGpx();
 
   const blob = new Blob([gpxText], { type: "application/gpx+xml" });
   const url = URL.createObjectURL(blob);
@@ -429,9 +474,7 @@ document.getElementById("download-btn").addEventListener("click", downloadCombin
 document.getElementById("download-btn-success").addEventListener("click", downloadCombinedGpx);
 
 async function doUpload() {
-  const name = document.getElementById("activity-name").value.trim() || "Combined activity";
-  const sport = document.getElementById("activity-type").value;
-  const gpxText = applySelectedSportToGpx(state.combinedBlobText, sport);
+  const { gpxText, name } = buildFinalGpx();
 
   const uploadBtn = document.getElementById("upload-btn");
   const retryBtn = document.getElementById("retry-upload-btn");
