@@ -1,7 +1,9 @@
 {
+  "id": "/app/",
   "name": "GPX Combiner mobile",
   "short_name": "GPX Combiner",
-  "start_url": "/",
+  "start_url": "/app/",
+  "scope": "/app/",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#fc4c02",

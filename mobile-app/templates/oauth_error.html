@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+  <title>GPX Combiner mobile</title>
+  <style>
+    :root { --accent: #fc4c02; --text: #1a1a1a; --muted: #6b6b6b; --bg: #ffffff; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 24px;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: var(--text);
+      background: var(--bg);
+    }
+    h1 { font-size: 1.2rem; margin: 0 0 8px; }
+    p { color: var(--muted); line-height: 1.4; max-width: 320px; margin: 0 0 20px; }
+    a.btn {
+      display: inline-block;
+      padding: 14px 28px;
+      border-radius: 10px;
+      background: var(--accent);
+      color: #fff;
+      text-decoration: none;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <h1>Connection didn't go through</h1>
+  <p>{{ message }}</p>
+  <a class="btn" href="/login">Try again</a>
+</body>
+</html>

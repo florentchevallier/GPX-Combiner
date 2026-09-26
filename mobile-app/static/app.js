@@ -42,24 +42,6 @@ const STRAVA_TYPE_TO_SPORT_CHOICE = {
 const MAX_ACTIVITIES = 10;
 const PAGE_SIZE = 5;
 
-// ---------------------------------------------------------------------------
-// Post-login reload workaround
-// ---------------------------------------------------------------------------
-// Right after the Strava OAuth round-trip, some mobile browsers render this
-// page's first paint in a "desktop" layout (the correct mobile layout only
-// comes back after a manual reload). Forcing one automatic reload, shortly
-// after landing, works around it. Guarded with sessionStorage so a genuine
-// rendering bug can never cause a reload loop.
-(function forcePostLoginReload() {
-  const params = new URLSearchParams(location.search);
-  if (params.get("just_logged_in") !== "1") return;
-  if (sessionStorage.getItem("gpxc_post_login_reload_done") === "1") return;
-  sessionStorage.setItem("gpxc_post_login_reload_done", "1");
-  setTimeout(() => {
-    location.replace(location.pathname); // drop the query param, avoid a back-button loop
-  }, 300);
-})();
-
 const state = {
   activities: [],       // all activities loaded so far
   page: 1,
