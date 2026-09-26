@@ -10,3 +10,4 @@ app_config.json
 __pycache__/
 /.ipynb_checkpoints
 GPX files for test/combined.gpx
+/.eggs
