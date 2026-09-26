@@ -505,11 +505,6 @@ class UploadProgressDialog(QDialog):
         self.setWindowTitle("Uploading to Strava")
         self.setMinimumWidth(360)
         self._activity_id = None
-        self._client = client
-        self._filepath = filepath
-        self._name = name
-        self._thread = None
-        self._worker = None
 
         layout = QVBoxLayout(self)
         self.status_label = QLabel("Uploading the file…")
@@ -521,10 +516,6 @@ class UploadProgressDialog(QDialog):
         self.view_btn.clicked.connect(self._open_activity)
         self.view_btn.hide()
         btn_row.addWidget(self.view_btn)
-        self.retry_btn = QPushButton("Try again")
-        self.retry_btn.clicked.connect(self._start_upload)
-        self.retry_btn.hide()
-        btn_row.addWidget(self.retry_btn)
         btn_row.addStretch()
         self.close_btn = QPushButton("Close")
         self.close_btn.clicked.connect(self.accept)
@@ -532,16 +523,8 @@ class UploadProgressDialog(QDialog):
         btn_row.addWidget(self.close_btn)
         layout.addLayout(btn_row)
 
-        self._start_upload()
-
-    def _start_upload(self):
-        self.status_label.setText("Uploading the file…")
-        self.view_btn.hide()
-        self.retry_btn.hide()
-        self.close_btn.setEnabled(False)
-
         self._thread = QThread(self)
-        self._worker = _UploadWorker(self._client, self._filepath, self._name)
+        self._worker = _UploadWorker(client, filepath, name)
         self._worker.moveToThread(self._thread)
         self._thread.started.connect(self._worker.run)
         self._worker.progress.connect(self._on_progress)
@@ -561,13 +544,7 @@ class UploadProgressDialog(QDialog):
         self.close_btn.setEnabled(True)
 
     def _on_error(self, err):
-        message = f"Upload failed:\n{err}"
-        if "duplicate" in err.lower():
-            message += ("\n\nIf you just deleted the original activity on Strava, wait a moment "
-                        "(Strava can take a little while to notice) and try again. Your combined "
-                        "file hasn't been lost, there's nothing to redo.")
-            self.retry_btn.show()
-        self.status_label.setText(message)
+        self.status_label.setText(f"Upload failed:\n{err}")
         self.close_btn.setEnabled(True)
 
     def _open_activity(self):
