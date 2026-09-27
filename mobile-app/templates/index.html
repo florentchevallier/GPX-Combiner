@@ -81,8 +81,10 @@
       <h2 id="activity-list-heading">Recent activities</h2>
       <ul id="activity-list" class="activity-list"></ul>
 
-      <button id="load-more-btn" class="btn btn-secondary hidden">Load 5 more</button>
-      <button id="load-local-btn" class="btn btn-secondary">Load local GPX files</button>
+      <div class="btn-row">
+        <button id="load-more-btn" class="btn btn-secondary hidden">Load 5 more</button>
+        <button id="load-local-btn" class="btn btn-secondary">Load local GPX</button>
+      </div>
       <button id="back-to-strava-btn" class="btn btn-text hidden">← Back to Strava activities</button>
       <input type="file" id="local-file-input" accept=".gpx" multiple class="hidden">
 
@@ -107,8 +109,11 @@
       <div class="page-intro">
         <h2>Review before sending</h2>
         <p id="delete-originals-hint" class="hint">
-          If you want to delete the original activities on Strava to avoid a
-          duplicate, do it now, before sending — you can open each one below:
+          Strava rejects duplicates, so delete the original activities below
+          before sending the combined one — tap each one to open it on
+          Strava. Made a mistake? Deleted activities can be restored within
+          30 days from Strava's
+          <a href="https://www.strava.com/athlete/training/recently_deleted" target="_blank" rel="noopener">recovery page</a>.
         </p>
       </div>
 
