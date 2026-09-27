@@ -664,6 +664,7 @@ function openReviewScreen(selectedActivities) {
 
       const check = document.createElement("span");
       check.className = "visited-check";
+      check.textContent = "✴️";
 
       const a = document.createElement("a");
       a.href = activity.strava_url;
