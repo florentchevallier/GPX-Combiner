@@ -6,6 +6,10 @@
   <title>GPX Combiner mobile</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 
+  <!-- Map preview (Leaflet + OSM tiles) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+
   <!-- PWA: installable on the home screen (Android + iOS) -->
   <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
   <meta name="theme-color" content="#fc4c02">
@@ -83,8 +87,10 @@
 
       <div class="btn-row">
         <button id="load-more-btn" class="btn btn-secondary hidden">Load 5 more</button>
+        <button id="map-toggle-home-btn" class="map-toggle-btn" type="button" title="Preview on map" aria-label="Preview selected activities on map">🗺️</button>
         <button id="load-local-btn" class="btn btn-secondary">Load local GPX</button>
       </div>
+      <div id="home-map" class="map-preview hidden"></div>
       <button id="back-to-strava-btn" class="btn btn-text hidden">← Back to Strava activities</button>
       <input type="file" id="local-file-input" accept=".gpx" multiple class="hidden">
 
@@ -126,6 +132,9 @@
       </div>
 
       <ul id="source-activity-links" class="source-links"></ul>
+
+      <button id="map-toggle-review-btn" class="btn btn-secondary" type="button">🗺️ Preview on map</button>
+      <div id="review-map" class="map-preview hidden"></div>
 
       <label class="field-label" for="activity-name">Combined activity name</label>
       <input type="text" id="activity-name" class="text-input">
@@ -186,6 +195,8 @@
       navigator.serviceWorker.register("/sw.js");
     }
   </script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 </html>

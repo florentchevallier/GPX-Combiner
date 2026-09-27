@@ -212,6 +212,7 @@ function enterGuestHome() {
 
   renderActivityList();
   updateCombineButtonState();
+  closeHomeMap();
   showView("view-home");
 }
 
@@ -317,6 +318,161 @@ function showHomeError(msg) {
   el.classList.remove("hidden");
 }
 
+// ---------------------------------------------------------------------------
+// Map preview (Leaflet + OSM tiles)
+// ---------------------------------------------------------------------------
+// Two independent toggles: one on the selection screen (one track per
+// selected activity, distinct colors, before anything is combined) and one
+// on the review screen (the single already-combined track). Each opens on
+// first click and closes on the second; content is (re)computed fresh every
+// time it opens rather than kept live in sync with the checkboxes, since
+// that's simpler and matches how the rest of this app already works.
+//
+// No green anywhere in this palette — it disappears against OSM's parks and
+// forests. (Note: #ffff33 is a pale yellow and can also wash out against
+// some light tile colors — worth an eye on real tiles, but left as chosen.)
+const TRACK_COLORS = ["#e41a1c", "#377eb8", "#984ea3", "#ff7f00", "#ffff33", "#f781bf"];
+
+const mapInstances = {}; // "home" | "review" -> Leaflet map, created lazily
+
+function ensureMap(containerId, key) {
+  if (!mapInstances[key]) {
+    mapInstances[key] = L.map(containerId);
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    }).addTo(mapInstances[key]);
+  }
+  return mapInstances[key];
+}
+
+function clearMapLayers(map) {
+  map.eachLayer((layer) => {
+    if (layer instanceof L.Polyline || layer instanceof L.CircleMarker) {
+      map.removeLayer(layer);
+    }
+  });
+}
+
+// Start = filled dot in the track's color; finish = white-filled dot with a
+// colored ring — a simple way to tell the two ends apart without needing
+// custom marker icons.
+function drawTrack(map, points, color) {
+  if (!points || points.length < 2) return null;
+  const line = L.polyline(points, { color, weight: 4 }).addTo(map);
+  L.circleMarker(points[0], { radius: 6, color: "#fff", weight: 2, fillColor: color, fillOpacity: 1 }).addTo(map);
+  L.circleMarker(points[points.length - 1], { radius: 6, color, weight: 2, fillColor: "#fff", fillOpacity: 1 }).addTo(map);
+  return line;
+}
+
+function extractPointsFromGpxText(gpxText) {
+  const doc = new DOMParser().parseFromString(gpxText, "application/xml");
+  const points = [];
+  doc.querySelectorAll("trkpt").forEach((pt) => {
+    const lat = parseFloat(pt.getAttribute("lat"));
+    const lon = parseFloat(pt.getAttribute("lon"));
+    if (!Number.isNaN(lat) && !Number.isNaN(lon)) points.push([lat, lon]);
+  });
+  return points;
+}
+
+async function fetchStravaTrackPoints(activityId) {
+  const res = await fetch(`/activities/${activityId}/track`);
+  const data = await res.json().catch(() => ({}));
+  return data.points || [];
+}
+
+function renderMapLegend(containerId, entries) {
+  let legend = document.getElementById(`${containerId}-legend`);
+  if (legend) legend.remove();
+  if (entries.length === 0) return;
+  legend = document.createElement("div");
+  legend.id = `${containerId}-legend`;
+  legend.className = "map-legend";
+  for (const { name, color } of entries) {
+    const item = document.createElement("div");
+    item.className = "map-legend-item";
+    const dot = document.createElement("span");
+    dot.className = "map-legend-dot";
+    dot.style.background = color;
+    item.appendChild(dot);
+    item.append(name);
+    legend.appendChild(item);
+  }
+  document.getElementById(containerId).insertAdjacentElement("afterend", legend);
+}
+
+function closeHomeMap() {
+  homeMapOpen = false;
+  document.getElementById("home-map").classList.add("hidden");
+  const legend = document.getElementById("home-map-legend");
+  if (legend) legend.remove();
+}
+
+let homeMapOpen = false;
+document.getElementById("map-toggle-home-btn").addEventListener("click", async () => {
+  if (homeMapOpen) {
+    closeHomeMap();
+    return;
+  }
+
+  const selected = getSelectedActivities();
+  if (selected.length === 0) {
+    showHomeError("Select at least one activity to preview on the map.");
+    return;
+  }
+  clearHomeError();
+
+  homeMapOpen = true;
+  const container = document.getElementById("home-map");
+  container.classList.remove("hidden");
+  const map = ensureMap("home-map", "home");
+  requestAnimationFrame(() => map.invalidateSize());
+  clearMapLayers(map);
+
+  const lines = [];
+  const legendEntries = [];
+  for (let i = 0; i < selected.length; i++) {
+    const activity = selected[i];
+    const color = TRACK_COLORS[i % TRACK_COLORS.length];
+    const points = activity._isLocal
+      ? extractPointsFromGpxText(activity._localContent)
+      : await fetchStravaTrackPoints(activity.id);
+    const line = drawTrack(map, points, color);
+    if (line) {
+      lines.push(line);
+      legendEntries.push({ name: activity.name, color });
+    }
+  }
+  renderMapLegend("home-map", legendEntries);
+  if (lines.length > 0) {
+    map.fitBounds(L.featureGroup(lines).getBounds().pad(0.1));
+  }
+});
+
+let reviewMapOpen = false;
+function closeReviewMap() {
+  reviewMapOpen = false;
+  document.getElementById("review-map").classList.add("hidden");
+}
+
+document.getElementById("map-toggle-review-btn").addEventListener("click", () => {
+  if (reviewMapOpen) {
+    closeReviewMap();
+    return;
+  }
+  reviewMapOpen = true;
+  const container = document.getElementById("review-map");
+  container.classList.remove("hidden");
+  const map = ensureMap("review-map", "review");
+  requestAnimationFrame(() => map.invalidateSize());
+  clearMapLayers(map);
+
+  const points = extractPointsFromGpxText(state.combinedBlobText);
+  const line = drawTrack(map, points, TRACK_COLORS[0]);
+  if (line) map.fitBounds(line.getBounds().pad(0.1));
+});
+
 function clearHomeError() {
   document.getElementById("home-error").classList.add("hidden");
 }
@@ -411,6 +567,7 @@ document.getElementById("local-file-input").addEventListener("change", async (e)
   state.mode = "local";
   state.activities = parsed;
   renderActivityList();
+  closeHomeMap(); // selection just changed — any preview open is now stale
   document.getElementById("load-more-btn").classList.add("hidden");
   // Only offer a way back to Strava activities if there's an actual Strava
   // session to go back to — never in guest mode.
@@ -424,6 +581,7 @@ document.getElementById("back-to-strava-btn").addEventListener("click", async ()
   state.activities = [];
   state.page = 1;
   clearHomeError();
+  closeHomeMap();
   document.getElementById("back-to-strava-btn").classList.add("hidden");
   document.getElementById("load-more-btn").classList.remove("hidden");
   await loadActivities();
@@ -481,6 +639,9 @@ document.getElementById("combine-btn").addEventListener("click", async () => {
 // ---------------------------------------------------------------------------
 
 function openReviewScreen(selectedActivities) {
+  closeHomeMap();
+  closeReviewMap(); // fresh combine result — any previous preview is stale
+
   // Default name: names concatenated in chronological order, joined by
   // " + " — same convention as the desktop app.
   const sorted = [...selectedActivities].sort((a, b) => a.start_date.localeCompare(b.start_date));
@@ -748,6 +909,7 @@ document.getElementById("restart-btn").addEventListener("click", () => {
   state.page = 1;
   state.combinedBlobText = null;
   state.mode = "strava";
+  closeHomeMap();
   document.getElementById("load-more-btn").classList.remove("hidden");
   document.getElementById("back-to-strava-btn").classList.add("hidden");
   showView("view-home");

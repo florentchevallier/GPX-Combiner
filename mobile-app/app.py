@@ -60,7 +60,7 @@ OAUTH_REDIRECT_URI = f"{APP_BASE_URL}/oauth/callback"
 # a discreet build counter in the footer, incremented by one on every file
 # handed over, so it's obvious at a glance whether the phone is actually
 # running the latest deploy or an older cached one.
-BUILD_ID = "19"
+BUILD_ID = "20"
 
 app = Flask(__name__)
 app.secret_key = os.environ["FLASK_SECRET_KEY"]
@@ -287,6 +287,19 @@ def list_activities():
     for a in activities:
         a["strava_url"] = f"https://www.strava.com/activities/{a['id']}"
     return jsonify(activities)
+
+
+@app.route("/activities/<int:activity_id>/track")
+def activity_track(activity_id):
+    """Just the lat/lon points for one Strava activity — used by the map
+    preview on the selection screen, before anything is combined. Cheaper
+    than reusing /combine's build_gpx_from_activity for this: the map only
+    needs coordinates, not a full GPX file."""
+    athlete_id, user = _require_login()
+    with _ClientSession(athlete_id, user) as client:
+        streams = client.get_streams(activity_id)
+    points = streams.get("latlng", {}).get("data") or []
+    return jsonify({"points": points})
 
 
 @app.route("/combine", methods=["POST"])

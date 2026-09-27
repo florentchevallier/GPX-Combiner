@@ -55,6 +55,47 @@ h2 { font-size: 1.1rem; margin: 20px 0 10px; }
 }
 .btn-row .btn { flex: 1; width: auto; margin: 0; }
 
+.map-toggle-btn {
+  flex: 0 0 44px;
+  width: 44px;
+  height: auto;
+  font-size: 1.2rem;
+  line-height: 1;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-alt);
+  cursor: pointer;
+}
+
+.map-preview {
+  height: 260px;
+  margin: 10px 0 16px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  overflow: hidden;
+  background: var(--bg-alt);
+}
+/* Leaflet's own default z-indexes assume a full page; scope them down so
+   the map never floats above the app's header or footer. */
+.map-preview .leaflet-pane,
+.map-preview .leaflet-control { z-index: 0; }
+
+.map-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin: -8px 0 16px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.map-legend-item { display: flex; align-items: center; gap: 6px; }
+.map-legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
 .install-hint {
   display: flex;
   flex-direction: column;
