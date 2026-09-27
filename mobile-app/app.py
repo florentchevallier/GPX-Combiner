@@ -29,7 +29,16 @@ import urllib.parse
 from datetime import timedelta
 
 from dotenv import load_dotenv
-from flask import Flask, request, jsonify, session, redirect, send_file, render_template
+from flask import (
+    Flask,
+    request,
+    jsonify,
+    session,
+    redirect,
+    send_file,
+    send_from_directory,
+    render_template,
+)
 
 load_dotenv()  # reads mobile-app/.env if present — see .env.example
 
@@ -51,7 +60,7 @@ OAUTH_REDIRECT_URI = f"{APP_BASE_URL}/oauth/callback"
 # a discreet build counter in the footer, incremented by one on every file
 # handed over, so it's obvious at a glance whether the phone is actually
 # running the latest deploy or an older cached one.
-BUILD_ID = "13"
+BUILD_ID = "15"
 
 app = Flask(__name__)
 app.secret_key = os.environ["FLASK_SECRET_KEY"]
@@ -82,6 +91,17 @@ def root():
 @app.route("/app/")
 def index():
     return render_template("index.html", build_id=BUILD_ID)
+
+
+@app.route("/sw.js")
+def service_worker():
+    """Served from the domain root (not /static/sw.js) so its default scope
+    is "/" — covering /app/. A service worker served from /static/ would
+    default to a /static/-only scope and never control the app itself,
+    which is enough to make Chrome consider the app not "installable" in
+    the full sense (no controlling service worker), even though the
+    manifest and icons are otherwise all correct."""
+    return send_from_directory(app.static_folder, "sw.js")
 
 
 # ---------------------------------------------------------------------------
@@ -292,8 +312,11 @@ def combine():
           "local_files": [ {"name": "...", "content": "<gpx>...</gpx>"}, ... ],
           "include": {...}  // optional, same as above
         }
+
+    Local-files mode needs no Strava account at all (the "Continue without
+    Strava" guest flow) — login is only required for the Strava-activities
+    branch, which is the only one that actually calls the Strava API.
     """
-    athlete_id, user = _require_login()
     body = request.get_json()
     include = body.get("include")  # None => combine_gpx_files keeps everything by default
 
@@ -304,6 +327,7 @@ def combine():
         # frontend already sorted these by the <time> tag it parsed from
         # each file before sending them.
     else:
+        athlete_id, user = _require_login()
         activities = body["activities"]
         # combine_gpx_files expects files already sorted chronologically
         # (oldest first) — same logic as the date sort on desktop.

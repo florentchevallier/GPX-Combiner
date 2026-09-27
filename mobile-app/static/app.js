@@ -60,11 +60,43 @@ const PAGE_SIZE = 5;
   }, 300);
 })();
 
+// ---------------------------------------------------------------------------
+// "Install as an app" — capture the browser's install signal immediately
+// ---------------------------------------------------------------------------
+// Chrome can fire `beforeinstallprompt` before init()'s first network round
+// trip (the /me call) resolves, so this listener has to be attached at
+// script-load time, not from inside the async splash-screen setup below —
+// otherwise the event fires with nobody listening and is lost for good.
+let deferredInstallPrompt = null;
+window.addEventListener("beforeinstallprompt", (event) => {
+  event.preventDefault();
+  deferredInstallPrompt = event;
+  wireInstallButton(); // in case the splash screen is already visible
+});
+
+function wireInstallButton() {
+  if (!deferredInstallPrompt) return;
+  const btn = document.getElementById("install-btn");
+  if (!btn) return;
+  btn.classList.remove("hidden");
+  btn.onclick = async () => {
+    btn.disabled = true;
+    deferredInstallPrompt.prompt();
+    await deferredInstallPrompt.userChoice;
+    deferredInstallPrompt = null;
+    btn.classList.add("hidden");
+  };
+}
+
 const state = {
   activities: [],       // all activities loaded so far
   page: 1,
   combinedBlobText: null, // text content of the combined GPX, waiting to be uploaded
   mode: "strava",       // "strava" | "local" — never mixed (see the local-import section below)
+  guestMode: false,     // true once "Continue without Strava" is chosen — no
+                         // Strava session exists at all, so uploading is
+                         // never offered, only combining local files and
+                         // downloading the result (see enterGuestHome below).
 };
 
 // ---------------------------------------------------------------------------
@@ -112,6 +144,34 @@ async function init() {
 }
 
 // ---------------------------------------------------------------------------
+// "Continue without Strava" — local-files-only guest flow
+// ---------------------------------------------------------------------------
+// No Strava account, no login at all: just load local GPX files, combine,
+// and download the result. /combine accepts local_files without a session
+// (see app.py); /upload still requires one, so the upload button is simply
+// never shown in this mode — there's nothing to upload to.
+
+function enterGuestHome() {
+  state.guestMode = true;
+  state.mode = "local";
+  state.activities = [];
+
+  document.getElementById("user-label").textContent =
+    "Local mode — no Strava account connected.";
+  document.getElementById("activity-list-heading").textContent = "Files to combine";
+  document.getElementById("load-more-btn").classList.add("hidden");
+  document.getElementById("back-to-strava-btn").classList.add("hidden");
+  document.getElementById("logout-link").classList.add("hidden");
+  document.getElementById("connect-strava-link").classList.remove("hidden");
+
+  renderActivityList();
+  updateCombineButtonState();
+  showView("view-home");
+}
+
+document.getElementById("guest-btn").addEventListener("click", enterGuestHome);
+
+// ---------------------------------------------------------------------------
 // "Install as an app" hint (splash screen only, first-time visitors)
 // ---------------------------------------------------------------------------
 
@@ -124,7 +184,6 @@ function setupInstallHint() {
   if (isRunningStandalone()) return; // already installed — nothing to suggest
 
   const hint = document.getElementById("install-hint");
-  const btn = document.getElementById("install-btn");
   const instructions = document.getElementById("install-instructions");
   hint.classList.remove("hidden");
 
@@ -136,21 +195,15 @@ function setupInstallHint() {
     return;
   }
 
-  // Android/Chrome: offer a real install button once the browser says the
-  // app is installable; if that event never fires (browser doesn't support
-  // it, or already dismissed this session), the fallback instructions below
-  // still cover it.
-  window.addEventListener("beforeinstallprompt", (event) => {
-    event.preventDefault();
-    btn.classList.remove("hidden");
-    btn.onclick = async () => {
-      btn.disabled = true;
-      event.prompt();
-      await event.userChoice;
-      btn.classList.add("hidden");
-    };
-  });
-  instructions.textContent = 'Or tap the browser menu (⋮) and choose "Add to Home screen".';
+  // Android/Chrome: pick up an already-captured install prompt (see the
+  // top of this file), or wait for one to arrive. Either way, also show the
+  // manual fallback — Chrome's menu often bundles "Install" together with
+  // "Create shortcut" under one entry, and only the former actually installs
+  // the app (the shortcut option just opens the page in a browser tab).
+  wireInstallButton();
+  instructions.textContent =
+    'Or open Chrome\'s menu (⋮) → "Install app". If it offers both ' +
+    '"Install" and "Create shortcut", choose Install.';
   instructions.classList.remove("hidden");
 }
 
@@ -313,7 +366,11 @@ document.getElementById("local-file-input").addEventListener("change", async (e)
   state.activities = parsed;
   renderActivityList();
   document.getElementById("load-more-btn").classList.add("hidden");
-  document.getElementById("back-to-strava-btn").classList.remove("hidden");
+  // Only offer a way back to Strava activities if there's an actual Strava
+  // session to go back to — never in guest mode.
+  if (!state.guestMode) {
+    document.getElementById("back-to-strava-btn").classList.remove("hidden");
+  }
 });
 
 document.getElementById("back-to-strava-btn").addEventListener("click", async () => {
@@ -444,6 +501,8 @@ function openReviewScreen(selectedActivities) {
   document.getElementById("review-error").classList.add("hidden");
   document.getElementById("review-status").classList.add("hidden");
   document.getElementById("retry-upload-btn").classList.add("hidden");
+  // No Strava session in guest mode — nothing to upload to, download only.
+  document.getElementById("upload-btn").classList.toggle("hidden", state.guestMode);
   showView("view-review");
 }
 

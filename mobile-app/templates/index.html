@@ -33,6 +33,9 @@
         result back to Strava — straight from your phone.
       </p>
       <a class="btn btn-primary" href="/login">Connect with Strava</a>
+      <button id="guest-btn" class="btn btn-secondary" type="button">
+        Continue without Strava
+      </button>
 
       <div id="install-hint" class="install-hint hidden">
         <svg class="install-hint-icon" width="56" height="56" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
@@ -56,7 +59,8 @@
         <div class="page-header-text">
           <h1>GPX Combiner <span class="accent">mobile</span></h1>
         </div>
-        <a class="btn btn-small" href="/logout">Log out</a>
+        <a id="logout-link" class="btn btn-small" href="/logout">Log out</a>
+        <a id="connect-strava-link" class="btn btn-small hidden" href="/login">Connect with Strava</a>
       </div>
 
       <div class="page-intro">
@@ -74,7 +78,7 @@
         <label><input type="checkbox" id="include-temp" checked> Temperature</label>
       </div>
 
-      <h2>Recent activities</h2>
+      <h2 id="activity-list-heading">Recent activities</h2>
       <ul id="activity-list" class="activity-list"></ul>
 
       <button id="load-more-btn" class="btn btn-secondary hidden">Load 5 more</button>
@@ -158,7 +162,15 @@
 
   <script>
     if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("{{ url_for('static', filename='sw.js') }}");
+      // Drop any earlier registration scoped to /static/ (from before the
+      // service worker moved to the domain root) — a stale, too-narrow
+      // scope can keep the app from being seen as fully installable.
+      navigator.serviceWorker.getRegistrations().then((regs) => {
+        for (const reg of regs) {
+          if (reg.scope.endsWith("/static/")) reg.unregister();
+        }
+      });
+      navigator.serviceWorker.register("/sw.js");
     }
   </script>
   <script src="{{ url_for('static', filename='app.js') }}"></script>
