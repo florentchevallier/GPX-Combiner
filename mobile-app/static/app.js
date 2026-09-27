@@ -74,6 +74,52 @@ window.addEventListener("beforeinstallprompt", (event) => {
   wireInstallButton(); // in case the splash screen is already visible
 });
 
+// ---------------------------------------------------------------------------
+// Strava's "recently deleted activities" recovery link
+// ---------------------------------------------------------------------------
+// That Strava page is desktop-only, and on Android a plain https:// link to
+// strava.com gets claimed by the Strava app itself (which then says the
+// page isn't available there). The `intent://` form below forces it open in
+// Chrome instead — bypassing the Strava app — which at least gets the user
+// to a real browser; they may still need to request the desktop site or
+// open it on a computer, which the copy button covers either way. There's
+// no equivalent trick on iOS (no way to reliably defeat Universal Links
+// from a plain web page), so iOS keeps the normal https:// link.
+const RECOVERY_URL = "https://www.strava.com/athlete/training/recently_deleted";
+
+(function setupRecoveryLink() {
+  const link = document.getElementById("recovery-link");
+  if (link && /android/i.test(navigator.userAgent)) {
+    link.href =
+      "intent://www.strava.com/athlete/training/recently_deleted" +
+      "#Intent;scheme=https;package=com.android.chrome;end";
+  }
+
+  const copyBtn = document.getElementById("copy-recovery-link");
+  if (!copyBtn) return;
+  copyBtn.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(RECOVERY_URL);
+    } catch (e) {
+      // Clipboard API unavailable (older WebView, non-HTTPS context, etc.)
+      const ta = document.createElement("textarea");
+      ta.value = RECOVERY_URL;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+    }
+    copyBtn.classList.add("copied");
+    copyBtn.title = "Copied!";
+    setTimeout(() => {
+      copyBtn.classList.remove("copied");
+      copyBtn.title = "Copy link";
+    }, 1500);
+  });
+})();
+
 function wireInstallButton() {
   if (!deferredInstallPrompt) return;
   const btn = document.getElementById("install-btn");

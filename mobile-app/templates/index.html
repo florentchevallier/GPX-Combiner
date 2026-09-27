@@ -113,7 +113,15 @@
           before sending the combined one — tap each one to open it on
           Strava. Made a mistake? Deleted activities can be restored within
           30 days from Strava's
-          <a href="https://www.strava.com/athlete/training/recently_deleted" target="_blank" rel="noopener">recovery page</a>.
+          <a id="recovery-link" href="https://www.strava.com/athlete/training/recently_deleted" target="_blank" rel="noopener">recovery page</a>
+          <button id="copy-recovery-link" class="copy-btn" type="button" title="Copy link" aria-label="Copy recovery page link">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+              <rect x="3" y="3" width="13" height="13" rx="3" stroke="currentColor" stroke-width="2"/>
+              <rect x="8" y="8" width="13" height="13" rx="3" fill="var(--bg)" stroke="currentColor" stroke-width="2"/>
+            </svg>
+          </button>
+          — that Strava page is desktop-only, so on a phone you may need to
+          copy the link and open it on a computer instead.
         </p>
       </div>
 

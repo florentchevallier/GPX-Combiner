@@ -48,6 +48,13 @@ h2 { font-size: 1.1rem; margin: 20px 0 10px; }
 .btn-small { width: auto; padding: 8px 14px; font-size: 0.85rem; background: var(--bg-alt); color: var(--text); border: 1px solid var(--border); }
 .btn-text { background: none; color: var(--muted); text-decoration: underline; padding: 8px; }
 
+.btn-row {
+  display: flex;
+  gap: 10px;
+  margin: 10px 0;
+}
+.btn-row .btn { flex: 1; width: auto; margin: 0; }
+
 .install-hint {
   display: flex;
   flex-direction: column;
@@ -131,6 +138,24 @@ h2 { font-size: 1.1rem; margin: 20px 0 10px; }
 
 .error { color: var(--error); font-size: 0.9rem; }
 .hint { color: var(--muted); font-size: 0.9rem; line-height: 1.4; }
+.hint a { color: var(--accent); }
+
+.copy-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  vertical-align: middle;
+  margin: 0 1px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: var(--bg-alt);
+  color: var(--muted);
+  cursor: pointer;
+}
+.copy-btn.copied { color: var(--accent); }
 
 .field-label { display: block; font-weight: 600; margin: 14px 0 4px; font-size: 0.9rem; }
 .text-input {
