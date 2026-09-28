@@ -873,7 +873,13 @@ async function doUpload() {
       rawEl.className = "hint";
       rawEl.style.marginTop = "8px";
       rawEl.style.fontSize = "0.75rem";
-      rawEl.textContent = "Strava message: " + message.replace(/<[^>]*>/g, "");
+      // Strava's raw message starts with the filename we uploaded (our own
+      // temp file's random name, e.g. "tmpth0efhik.gpx duplicate of ...") —
+      // meaningless to the user, so it's stripped before display.
+      const cleanedMessage = message
+        .replace(/<[^>]*>/g, "")
+        .replace(/^\S+\.gpx\s+/i, "");
+      rawEl.textContent = "Strava message: " + cleanedMessage;
       errorEl.appendChild(rawEl);
       retryBtn.classList.remove("hidden");
     } else {
