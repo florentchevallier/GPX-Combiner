@@ -6,6 +6,9 @@
   --bg: #ffffff;
   --bg-alt: #f7f7f7;
   --error: #c0392b;
+  --success: #2e7d32;
+  --success-bg: #e8f5e9;
+  --success-border: #a5d6a7;
 }
 
 * { box-sizing: border-box; }
@@ -140,14 +143,14 @@ h2 { font-size: 1.1rem; margin: 20px 0 10px; }
 .page-intro { margin-bottom: 16px; }
 
 .success-card {
-  background: var(--bg-alt);
-  border: 1px solid var(--border);
+  background: var(--success-bg);
+  border: 1px solid var(--success-border);
   border-radius: 10px;
   padding: 32px 16px;
   margin: 24px 0;
   text-align: center;
 }
-.success-card h2 { margin: 0; font-size: 1.2rem; }
+.success-card h2 { margin: 0; font-size: 1.3rem; color: var(--success); }
 
 #user-label { font-weight: 600; margin-bottom: 4px; }
 

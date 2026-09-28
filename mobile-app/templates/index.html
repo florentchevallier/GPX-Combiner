@@ -163,7 +163,7 @@
       </div>
 
       <div class="success-card">
-        <h2>Sent to Strava ✓</h2>
+        <h2>Success! Sent to Strava ✓</h2>
       </div>
 
       <a id="success-link" class="btn btn-primary" href="#" target="_blank" rel="noopener">
@@ -179,7 +179,11 @@
     Hitting a limitation here?
     <a href="https://github.com/florentchevallier/GPX-Combiner" target="_blank" rel="noopener">The desktop app</a>
     does it all, including a map preview.
-    <div class="build-tag">build {{ build_id | default("?", true) }}</div>
+    <div class="build-tag">
+      By <a href="mailto:florent.chevallier@gmail.com">Florent Chevallier</a>
+      · <a href="https://ko-fi.com/florentchevallier" target="_blank" rel="noopener">buy me a coffee</a>
+      · build {{ build_id | default("?", true) }}
+    </div>
   </footer>
 
   <script>
