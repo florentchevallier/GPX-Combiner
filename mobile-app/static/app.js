@@ -40,6 +40,7 @@ const STRAVA_TYPE_TO_SPORT_CHOICE = {
 };
 
 const MAX_ACTIVITIES = 10;
+const MAX_ACTIVITIES_PRO = 20; // Pro mode allows loading further back in history
 const PAGE_SIZE = 5;
 
 // ---------------------------------------------------------------------------
@@ -209,6 +210,7 @@ function enterGuestHome() {
     "Local mode — no Strava account connected.";
   document.getElementById("activity-list-heading").textContent = "Files to combine";
   document.getElementById("load-more-btn").classList.add("hidden");
+  document.getElementById("activities-max-hint").classList.add("hidden");
   document.getElementById("back-to-strava-btn").classList.add("hidden");
   document.getElementById("logout-link").classList.add("hidden");
   document.getElementById("connect-strava-link").classList.remove("hidden");
@@ -267,11 +269,23 @@ async function loadActivities() {
   state.activities.push(...newActivities);
   renderActivityList();
 
+  // Pro mode allows loading two extra pages (10 -> 20) — same idea as the
+  // extra HR/cadence/power/temp fields it unlocks, for people who want to
+  // dig further into their history.
+  const proMode = document.getElementById("pro-mode-toggle").checked;
+  const maxActivities = proMode ? MAX_ACTIVITIES_PRO : MAX_ACTIVITIES;
+  const reachedMax = state.activities.length >= maxActivities;
   const loadMoreBtn = document.getElementById("load-more-btn");
-  if (state.activities.length >= MAX_ACTIVITIES || newActivities.length < PAGE_SIZE) {
+  const maxHint = document.getElementById("activities-max-hint");
+  if (reachedMax || newActivities.length < PAGE_SIZE) {
     loadMoreBtn.classList.add("hidden");
+    // Only worth pointing to the desktop app when there's a real reason to
+    // think older activities exist beyond this cap (a full last page) —
+    // not when Strava itself just ran out.
+    maxHint.classList.toggle("hidden", !(reachedMax && newActivities.length === PAGE_SIZE));
   } else {
     loadMoreBtn.classList.remove("hidden");
+    maxHint.classList.add("hidden");
   }
 }
 
@@ -492,6 +506,14 @@ function escapeHtml(s) {
 
 document.getElementById("pro-mode-toggle").addEventListener("change", (e) => {
   document.getElementById("pro-mode-panel").classList.toggle("hidden", !e.target.checked);
+  // Turning pro mode on raises the activities cap (10 -> 20) — if the
+  // normal cap was already hit, "Load 5 more" needs to reappear so the two
+  // extra pages are actually reachable.
+  if (e.target.checked && state.mode === "strava" &&
+      state.activities.length >= MAX_ACTIVITIES && state.activities.length < MAX_ACTIVITIES_PRO) {
+    document.getElementById("load-more-btn").classList.remove("hidden");
+    document.getElementById("activities-max-hint").classList.add("hidden");
+  }
 });
 
 function getIncludeSettings() {
@@ -572,6 +594,7 @@ document.getElementById("local-file-input").addEventListener("change", async (e)
   renderActivityList();
   closeHomeMap(); // selection just changed — any preview open is now stale
   document.getElementById("load-more-btn").classList.add("hidden");
+  document.getElementById("activities-max-hint").classList.add("hidden");
   // Only offer a way back to Strava activities if there's an actual Strava
   // session to go back to — never in guest mode.
   if (!state.guestMode) {

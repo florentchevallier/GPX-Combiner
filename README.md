@@ -269,7 +269,7 @@ A companion mobile web app lives in [`mobile-app/`](mobile-app/) — a small Fla
 
 ### What it does
 
-- **View recent Strava activities** on your phone (paginated, 5 at a time, up to 10 loaded at once) and select at least two to combine.
+- **View recent Strava activities** on your phone (paginated, 5 at a time, up to 10 loaded at once — 20 in Pro mode) and select at least two to combine. Past that cap, a hint points to the desktop app for browsing further back.
 - **Or continue without Strava**: a "Continue without Strava" option on the login screen skips authentication entirely and goes straight to combining local GPX files — no Strava account needed at all. The "Upload to Strava" option is hidden in this mode, since there's no linked account to upload to.
 - **Import local GPX files instead** ("Load local GPX" button): an alternative source to Strava, never mixed with it — picking files replaces the list rather than appending to it. Sport is auto-detected from the file's own `<type>` tag when present (matching the value Strava's own exports and this project's own files use), sorted chronologically from each file's `<time>` tag.
 - **Map preview**: a 🗺️ button toggles an OpenStreetMap preview in place, on both the file/activity selection screen (each selected activity or file drawn in its own color, with a legend) and the review screen (the combined track). Same non-green color palette as the desktop app.

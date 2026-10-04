@@ -60,7 +60,7 @@ OAUTH_REDIRECT_URI = f"{APP_BASE_URL}/oauth/callback"
 # a discreet build counter in the footer, incremented by one on every file
 # handed over, so it's obvious at a glance whether the phone is actually
 # running the latest deploy or an older cached one.
-BUILD_ID = "26"
+BUILD_ID = "27"
 
 app = Flask(__name__)
 app.secret_key = os.environ["FLASK_SECRET_KEY"]
