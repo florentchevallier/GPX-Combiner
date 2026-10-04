@@ -33,6 +33,7 @@ import json
 import time
 import math
 import socket
+import subprocess
 import threading
 import uuid
 import calendar as cal_module
@@ -231,6 +232,7 @@ TR = {
         "err_write_body": "Impossible d'enregistrer le fichier :\n{err}",
         "done_title": "Terminé",
         "done_body": "Fichier combiné enregistré :\n{path}",
+        "open_folder_btn": "Ouvrir le dossier",
         "status_done": "Combiné avec succès → {path}",
         # Strava window
         "strava_title": "Importer depuis Strava",
@@ -356,6 +358,7 @@ TR = {
         "err_write_body": "Could not save the file:\n{err}",
         "done_title": "Done",
         "done_body": "Combined file saved:\n{path}",
+        "open_folder_btn": "Open folder",
         "status_done": "Combined successfully → {path}",
         "strava_title": "Import from Strava",
         "from_label": "From:",
@@ -481,6 +484,7 @@ TR = {
         "err_write_body": "No se pudo guardar el archivo:\n{err}",
         "done_title": "Listo",
         "done_body": "Archivo combinado guardado:\n{path}",
+        "open_folder_btn": "Abrir carpeta",
         "status_done": "Combinado con éxito → {path}",
         "strava_title": "Importar desde Strava",
         "from_label": "Desde:",
@@ -607,6 +611,7 @@ TR = {
         "err_write_body": "Datei konnte nicht gespeichert werden:\n{err}",
         "done_title": "Fertig",
         "done_body": "Kombinierte Datei gespeichert:\n{path}",
+        "open_folder_btn": "Ordner öffnen",
         "status_done": "Erfolgreich kombiniert → {path}",
         "strava_title": "Von Strava importieren",
         "from_label": "Von:",
@@ -1078,6 +1083,21 @@ def sanitize_filename(name):
     cleaned = re.sub(r"[^\w\s\-()+]", "", name, flags=re.UNICODE)
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     return cleaned or "activity"
+
+
+def reveal_in_file_manager(path):
+    """Opens the OS file manager with the given file selected/highlighted
+    (Finder on macOS, Explorer on Windows), or just opens its containing
+    folder as a fallback (Linux, or if the OS-specific command fails)."""
+    try:
+        if sys.platform == "darwin":
+            subprocess.run(["open", "-R", path], check=False)
+        elif sys.platform == "win32":
+            subprocess.run(["explorer", "/select,", path], check=False)
+        else:
+            subprocess.run(["xdg-open", os.path.dirname(path)], check=False)
+    except OSError:
+        pass
 
 
 _geocode_cache = {}
@@ -2127,6 +2147,48 @@ class StravaSettingsWindow(tk.Toplevel):
 
 
 # ----------------------------------------------------------------------------
+# Export-done dialog
+# ----------------------------------------------------------------------------
+
+class ExportDoneDialog(tk.Toplevel):
+    """Confirms a successful "Combine and save" with the usual OK button,
+    plus an "Open folder" button underneath it that reveals the saved file
+    in the OS file manager (Finder/Explorer) without closing the app."""
+
+    def __init__(self, master_app, save_path):
+        super().__init__(master_app.root)
+        self.t = master_app.t
+        self.save_path = save_path
+        self.title(self.t("done_title"))
+        self.resizable(False, False)
+        self.transient(master_app.root)
+
+        frame = ttk.Frame(self, padding=16)
+        frame.pack(fill="both", expand=True)
+
+        ttk.Label(frame, text=self.t("done_body").format(path=save_path),
+                  justify="left").pack(anchor="w")
+
+        btns = ttk.Frame(frame)
+        btns.pack(fill="x", pady=(14, 0))
+        ttk.Button(btns, text=self.t("ok_btn"), command=self._on_ok).pack(fill="x")
+        ttk.Button(btns, text=self.t("open_folder_btn"),
+                   command=self._on_open_folder).pack(fill="x", pady=(6, 0))
+
+        self.protocol("WM_DELETE_WINDOW", self._on_ok)
+        self.bind("<Return>", lambda e: self._on_ok())
+        self.bind("<Escape>", lambda e: self._on_ok())
+        self.grab_set()
+
+    def _on_ok(self):
+        self.grab_release()
+        self.destroy()
+
+    def _on_open_folder(self):
+        reveal_in_file_manager(self.save_path)
+
+
+# ----------------------------------------------------------------------------
 # Upload progress window
 # ----------------------------------------------------------------------------
 
@@ -2575,7 +2637,7 @@ class GpxCombinerApp:
             messagebox.showerror(self.t("err_write_title"), self.t("err_write_body").format(err=e))
             return
 
-        messagebox.showinfo(self.t("done_title"), self.t("done_body").format(path=save_path))
+        ExportDoneDialog(self, save_path)
         self.status_var.set(self.t("status_done").format(path=save_path))
 
     def upload_to_strava(self):
