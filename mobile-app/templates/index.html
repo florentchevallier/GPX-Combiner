@@ -115,11 +115,10 @@
       <div class="page-intro">
         <h2>Review before sending</h2>
         <p id="delete-originals-hint" class="hint">
-          Strava rejects duplicates, so delete the original activities below
-          before sending the combined one — tap each one to open it on
-          Strava. Made a mistake? Deleted activities can be restored within
-          30 days from Strava's
-          <a id="recovery-link" href="https://www.strava.com/athlete/training/recently_deleted" target="_blank" rel="noopener">recovery page</a>
+          After a successful upload, you can click the links below and erase
+          your original activities. Strava gives you 30 days to change your
+          mind and recover them — just go to
+          <a id="recovery-link" href="https://www.strava.com/athlete/training/recently_deleted" target="_blank" rel="noopener">My activities &gt; Recently deleted</a>
           <button id="copy-recovery-link" class="copy-btn" type="button" title="Copy link" aria-label="Copy recovery page link">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
               <rect x="3" y="3" width="13" height="13" rx="3" stroke="currentColor" stroke-width="2"/>
@@ -130,8 +129,6 @@
           copy the link and open it on a computer instead.
         </p>
       </div>
-
-      <ul id="source-activity-links" class="source-links"></ul>
 
       <button id="map-toggle-review-btn" class="btn btn-secondary" type="button">🗺️ Preview on map</button>
       <div id="review-map" class="map-preview hidden"></div>
@@ -146,31 +143,13 @@
       <p id="review-status" class="hint hidden"></p>
 
       <button id="upload-btn" class="btn btn-primary">Upload to Strava</button>
+      <ul id="source-activity-links" class="source-links"></ul>
+      <a id="view-combined-link" class="btn btn-primary hidden" href="#" target="_blank" rel="noopener">
+        View combined activity on Strava
+      </a>
       <button id="download-btn" class="btn btn-secondary">Download GPX file on my device</button>
       <button id="retry-upload-btn" class="btn btn-secondary hidden">Retry</button>
       <button id="back-to-home-btn" class="btn btn-text">← Back to list</button>
-    </section>
-
-    <!-- ===================== Screen: success ===================== -->
-    <section id="view-success" class="view hidden">
-      <div class="page-header">
-        <a class="logo-block" href="https://github.com/florentchevallier/GPX-Combiner" target="_blank" rel="noopener">
-          <img class="app-logo" src="{{ url_for('static', filename='img/logo.png') }}" alt="GPX Combiner logo">
-        </a>
-        <div class="page-header-text">
-          <h1>GPX Combiner <span class="accent">mobile</span></h1>
-        </div>
-      </div>
-
-      <div class="success-card">
-        <h2>Success! Sent to Strava ✓</h2>
-      </div>
-
-      <a id="success-link" class="btn btn-primary" href="#" target="_blank" rel="noopener">
-        View activity on Strava
-      </a>
-      <button id="download-btn-success" class="btn btn-secondary">Download GPX file on my device</button>
-      <button id="restart-btn" class="btn btn-text">← Combine more activities</button>
     </section>
 
   </main>

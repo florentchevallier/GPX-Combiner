@@ -47,6 +47,8 @@ h2 { font-size: 1.1rem; margin: 20px 0 10px; }
 }
 .btn-primary { background: var(--accent); color: white; }
 .btn-primary:disabled { background: #f5b088; cursor: not-allowed; }
+.btn-success { background: var(--success); color: white; cursor: default; }
+.btn-success:disabled { background: var(--success); color: white; opacity: 1; }
 .btn-secondary { background: var(--bg-alt); color: var(--text); border: 1px solid var(--border); }
 .btn-small { width: auto; padding: 8px 14px; font-size: 0.85rem; background: var(--bg-alt); color: var(--text); border: 1px solid var(--border); }
 .btn-text { background: none; color: var(--muted); text-decoration: underline; padding: 8px; }
@@ -141,16 +143,6 @@ h2 { font-size: 1.1rem; margin: 20px 0 10px; }
 /* Gap between the shared header (logo + app name) and the page-specific
    content below it — same on every screen for a consistent look. */
 .page-intro { margin-bottom: 16px; }
-
-.success-card {
-  background: var(--success-bg);
-  border: 1px solid var(--success-border);
-  border-radius: 10px;
-  padding: 32px 16px;
-  margin: 24px 0;
-  text-align: center;
-}
-.success-card h2 { margin: 0; font-size: 1.3rem; color: var(--success); }
 
 #user-label { font-weight: 600; margin-bottom: 4px; }
 

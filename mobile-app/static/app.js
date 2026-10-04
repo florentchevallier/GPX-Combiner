@@ -143,6 +143,9 @@ const state = {
                          // Strava session exists at all, so uploading is
                          // never offered, only combining local files and
                          // downloading the result (see enterGuestHome below).
+  lastUploadSucceeded: false, // set once doUpload succeeds; read by the
+                         // "← Back to list" handler to start fresh instead
+                         // of returning to a now-stale selection.
 };
 
 // ---------------------------------------------------------------------------
@@ -709,13 +712,39 @@ function openReviewScreen(selectedActivities) {
   document.getElementById("review-error").classList.add("hidden");
   document.getElementById("review-status").classList.add("hidden");
   document.getElementById("retry-upload-btn").classList.add("hidden");
+
+  // Reset any leftover success state from a previous combine on this screen.
+  state.lastUploadSucceeded = false;
+  const uploadBtn = document.getElementById("upload-btn");
+  uploadBtn.disabled = false;
+  uploadBtn.textContent = "Upload to Strava";
+  uploadBtn.classList.remove("btn-success");
+  uploadBtn.classList.add("btn-primary");
   // No Strava session in guest mode — nothing to upload to, download only.
-  document.getElementById("upload-btn").classList.toggle("hidden", state.guestMode);
+  uploadBtn.classList.toggle("hidden", state.guestMode);
+  document.getElementById("view-combined-link").classList.add("hidden");
+
   showView("view-review");
 }
 
 document.getElementById("back-to-home-btn").addEventListener("click", () => {
-  showView("view-home");
+  if (state.lastUploadSucceeded) {
+    // After a successful upload, going "back" should start fresh rather
+    // than return to a now-stale selection (this mirrors the old separate
+    // "Combine more activities" success screen's behavior).
+    state.activities = [];
+    state.page = 1;
+    state.combinedBlobText = null;
+    state.mode = "strava";
+    state.lastUploadSucceeded = false;
+    closeHomeMap();
+    document.getElementById("load-more-btn").classList.remove("hidden");
+    document.getElementById("back-to-strava-btn").classList.add("hidden");
+    showView("view-home");
+    loadActivities();
+  } else {
+    showView("view-home");
+  }
 });
 
 // Replaces the content of the <type>...</type> tag in the combined GPX with
@@ -829,7 +858,6 @@ function downloadCombinedGpx() {
 }
 
 document.getElementById("download-btn").addEventListener("click", downloadCombinedGpx);
-document.getElementById("download-btn-success").addEventListener("click", downloadCombinedGpx);
 
 async function doUpload() {
   const { gpxText, name } = buildFinalGpx();
@@ -845,6 +873,8 @@ async function doUpload() {
   statusEl.classList.remove("hidden");
   statusEl.textContent = "Uploading… (Strava can take a few seconds to process the file)";
 
+  let succeeded = false;
+
   const formData = new FormData();
   formData.append("file", new Blob([gpxText], { type: "application/gpx+xml" }), "combined.gpx");
   formData.append("name", name);
@@ -854,7 +884,8 @@ async function doUpload() {
     const payload = await res.json().catch(() => ({}));
 
     if (res.ok && payload.activity_id) {
-      showSuccess(payload.activity_id);
+      succeeded = true;
+      onUploadSuccess(payload.activity_id);
       return;
     }
 
@@ -892,7 +923,7 @@ async function doUpload() {
     errorEl.classList.remove("hidden");
     retryBtn.classList.remove("hidden");
   } finally {
-    uploadBtn.disabled = false;
+    if (!succeeded) uploadBtn.disabled = false;
   }
 }
 
@@ -900,27 +931,24 @@ document.getElementById("upload-btn").addEventListener("click", doUpload);
 document.getElementById("retry-upload-btn").addEventListener("click", doUpload);
 
 // ---------------------------------------------------------------------------
-// Success
+// Success — shown in place on the review screen rather than a separate
+// screen, so the source-activity links (needed to go delete the originals)
+// stay visible and reachable right alongside it.
 // ---------------------------------------------------------------------------
 
-function showSuccess(activityId) {
-  document.getElementById("success-link").href = `https://www.strava.com/activities/${activityId}`;
-  showView("view-success");
-}
+function onUploadSuccess(activityId) {
+  document.getElementById("review-status").classList.add("hidden");
 
-document.getElementById("restart-btn").addEventListener("click", () => {
-  // Reset state and go back to home, without forcing a reconnect. Always
-  // starts fresh on the Strava list, even if the previous combine used
-  // local files.
-  state.activities = [];
-  state.page = 1;
-  state.combinedBlobText = null;
-  state.mode = "strava";
-  closeHomeMap();
-  document.getElementById("load-more-btn").classList.remove("hidden");
-  document.getElementById("back-to-strava-btn").classList.add("hidden");
-  showView("view-home");
-  loadActivities();
-});
+  const uploadBtn = document.getElementById("upload-btn");
+  uploadBtn.textContent = "Success! Sent to Strava ✓";
+  uploadBtn.classList.remove("btn-primary");
+  uploadBtn.classList.add("btn-success");
+
+  const link = document.getElementById("view-combined-link");
+  link.href = `https://www.strava.com/activities/${activityId}`;
+  link.classList.remove("hidden");
+
+  state.lastUploadSucceeded = true;
+}
 
 init();

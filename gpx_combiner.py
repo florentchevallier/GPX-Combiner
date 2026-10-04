@@ -86,7 +86,7 @@ def resource_path(filename):
     script."""
     base = getattr(sys, "_MEIPASS", SCRIPT_DIR)
     return os.path.join(base, filename)
-APP_VERSION = "3.7.9"
+APP_VERSION = "3.8"
 CONFIG_PATH = os.path.join(SCRIPT_DIR, "strava_config.json")
 APP_CONFIG_PATH = os.path.join(SCRIPT_DIR, "app_config.json")  # app-wide settings (language...), kept
                                                                  # separate from Strava credentials
@@ -170,11 +170,12 @@ TR = {
         "include_fields_label": "Inclure dans l'export :",
         "upload_btn": "Envoyer sur Strava…",
         "upload_no_file_body": "Combine d'abord des fichiers pour obtenir un GPX à envoyer.",
-        "open_originals_title": "Ouvrir les activités d'origine ?",
-        "open_originals_body": "{n} des fichiers combinés proviennent d'activités Strava déjà existantes. "
-                                "Pour éviter une erreur de doublon, tu peux les supprimer sur Strava avant "
-                                "l'envoi (récupérables pendant 30 jours en cas d'erreur). Ouvrir chacune dans "
-                                "un nouvel onglet du navigateur ?",
+        "open_originals_title": "Supprimer les activités d'origine ?",
+        "open_originals_body": "L'envoi a réussi. Veux-tu ouvrir les anciennes activités pour les "
+                                "supprimer ? Strava te laisse 30 jours pour les récupérer en cas de "
+                                "changement d'avis.",
+        "open_originals_tabs_btn": "Ouvrir chacune dans un nouvel onglet",
+        "open_originals_page_btn": "Ouvrir la page des activités",
         "upload_name_title": "Nom de l'activité",
         "upload_name_prompt": "Nom à donner à l'activité sur Strava :",
         "upload_type_prompt": "Type d'activité :",
@@ -297,11 +298,12 @@ TR = {
         "include_fields_label": "Include in export:",
         "upload_btn": "Upload to Strava…",
         "upload_no_file_body": "Combine some files first to get a GPX to upload.",
-        "open_originals_title": "Open the original activities?",
-        "open_originals_body": "{n} of the combined files come from existing Strava activities. To avoid a "
-                                "duplicate-activity error, you may want to delete them on Strava before "
-                                "uploading (recoverable for 30 days if you change your mind). Open each one "
-                                "in a new browser tab?",
+        "open_originals_title": "Remove the original activities?",
+        "open_originals_body": "The upload was successful. Do you want to open the old activities to "
+                                "remove them? Strava gives you 30 days to change your mind and recover "
+                                "them.",
+        "open_originals_tabs_btn": "Open each one in a new tab",
+        "open_originals_page_btn": "Open Activities page",
         "upload_name_title": "Activity name",
         "upload_name_prompt": "Name to give this activity on Strava:",
         "upload_type_prompt": "Activity type:",
@@ -422,11 +424,12 @@ TR = {
         "include_fields_label": "Incluir en la exportación:",
         "upload_btn": "Subir a Strava…",
         "upload_no_file_body": "Combina primero algunos archivos para obtener un GPX que subir.",
-        "open_originals_title": "¿Abrir las actividades originales?",
-        "open_originals_body": "{n} de los archivos combinados provienen de actividades de Strava ya "
-                                "existentes. Para evitar un error de actividad duplicada, puedes eliminarlas "
-                                "en Strava antes de subir (recuperables durante 30 días si cambias de "
-                                "opinión). ¿Abrir cada una en una nueva pestaña del navegador?",
+        "open_originals_title": "¿Eliminar las actividades originales?",
+        "open_originals_body": "La subida se completó correctamente. ¿Quieres abrir las actividades "
+                                "antiguas para eliminarlas? Strava te da 30 días para recuperarlas si "
+                                "cambias de opinión.",
+        "open_originals_tabs_btn": "Abrir cada una en una nueva pestaña",
+        "open_originals_page_btn": "Abrir la página de actividades",
         "upload_name_title": "Nombre de la actividad",
         "upload_name_prompt": "Nombre para esta actividad en Strava:",
         "upload_type_prompt": "Tipo de actividad:",
@@ -548,11 +551,12 @@ TR = {
         "include_fields_label": "In den Export einschließen:",
         "upload_btn": "Zu Strava hochladen…",
         "upload_no_file_body": "Kombiniere zuerst einige Dateien, um eine GPX-Datei zum Hochladen zu erhalten.",
-        "open_originals_title": "Ursprüngliche Aktivitäten öffnen?",
-        "open_originals_body": "{n} der kombinierten Dateien stammen aus bereits vorhandenen "
-                                "Strava-Aktivitäten. Um einen Duplikat-Fehler zu vermeiden, kannst du sie vor "
-                                "dem Hochladen auf Strava löschen (bei Bedarf 30 Tage lang wiederherstellbar). "
-                                "Jede in einem neuen Browser-Tab öffnen?",
+        "open_originals_title": "Ursprüngliche Aktivitäten löschen?",
+        "open_originals_body": "Der Upload war erfolgreich. Möchtest du die alten Aktivitäten öffnen, um "
+                                "sie zu löschen? Strava lässt dir 30 Tage Zeit, sie bei Bedarf "
+                                "wiederherzustellen.",
+        "open_originals_tabs_btn": "Jede in einem neuen Tab öffnen",
+        "open_originals_page_btn": "Aktivitäten-Seite öffnen",
         "upload_name_title": "Name der Aktivität",
         "upload_name_prompt": "Name für diese Aktivität auf Strava:",
         "upload_type_prompt": "Aktivitätstyp:",
@@ -811,6 +815,26 @@ class DatePicker(ttk.Frame):
 def extract_sort_key(content, fallback):
     m = TIME_RE.search(content)
     return m.group(1).strip() if m else fallback
+
+
+def shift_first_trkpt_time(content, delta_seconds=-1):
+    """Nudges the very first <time> in the file (the combined track's
+    starting timestamp) by delta_seconds. Strava's duplicate-activity
+    detection matches an upload against existing activities by exact start
+    time; when the combined file's first point is identical to one of its
+    own source activities (the usual case), this tiny, imperceptible offset
+    is enough to stop Strava flagging it as a duplicate. Leaves the file
+    untouched if the first <time> can't be parsed."""
+    m = TIME_RE.search(content)
+    if not m:
+        return content
+    try:
+        dt = datetime.strptime(m.group(1).strip(), "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return content
+    shifted = (dt + timedelta(seconds=delta_seconds)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    start, end = m.span(1)
+    return content[:start] + shifted + content[end:]
 
 
 def extract_first_trkseg(content):
@@ -2188,6 +2212,53 @@ class ExportDoneDialog(tk.Toplevel):
         reveal_in_file_manager(self.save_path)
 
 
+class OpenOriginalsDialog(tk.Toplevel):
+    """Shown once a combined file's upload to Strava succeeds, when one or
+    more of its source files were themselves downloaded from Strava: offers
+    to open those original activities so the user can delete them (Strava
+    keeps deleted activities recoverable for 30 days). Appears after the
+    upload rather than before it, since the combined file's start time is
+    already nudged by shift_first_trkpt_time() to avoid Strava's own
+    duplicate-activity rejection — this is just encouraging cleanup, not
+    avoiding an error."""
+
+    def __init__(self, master_app, original_ids):
+        super().__init__(master_app.root)
+        self.t = master_app.t
+        self.original_ids = original_ids
+        self.title(self.t("open_originals_title"))
+        self.resizable(False, False)
+        self.transient(master_app.root)
+
+        frame = ttk.Frame(self, padding=16)
+        frame.pack(fill="both", expand=True)
+
+        ttk.Label(frame, text=self.t("open_originals_body"), wraplength=320,
+                  justify="left").pack(anchor="w")
+
+        btns = ttk.Frame(frame)
+        btns.pack(fill="x", pady=(14, 0))
+        ttk.Button(btns, text=self.t("open_originals_tabs_btn"),
+                   command=self._on_open_tabs).pack(fill="x")
+        ttk.Button(btns, text=self.t("open_originals_page_btn"),
+                   command=self._on_open_page).pack(fill="x", pady=(6, 0))
+
+        self.protocol("WM_DELETE_WINDOW", self.destroy)
+        self.bind("<Escape>", lambda e: self.destroy())
+        self.grab_set()
+
+    def _on_open_tabs(self):
+        for aid in self.original_ids:
+            webbrowser.open_new_tab(f"https://www.strava.com/activities/{aid}/overview")
+        self.grab_release()
+        self.destroy()
+
+    def _on_open_page(self):
+        webbrowser.open_new_tab("https://www.strava.com/athlete/training")
+        self.grab_release()
+        self.destroy()
+
+
 # ----------------------------------------------------------------------------
 # Upload progress window
 # ----------------------------------------------------------------------------
@@ -2248,7 +2319,7 @@ class UploadProgressWindow(tk.Toplevel):
     check_upload() until Strava finishes processing it (or reports an
     error, e.g. a duplicate of an existing activity)."""
 
-    def __init__(self, master_app, client, filepath, name):
+    def __init__(self, master_app, client, filepath, name, original_ids=None):
         super().__init__(master_app.root)
         self.master_app = master_app
         self.t = master_app.t
@@ -2256,6 +2327,7 @@ class UploadProgressWindow(tk.Toplevel):
         self.resizable(False, False)
         self.protocol("WM_DELETE_WINDOW", lambda: None)  # ignore close while uploading
 
+        self._original_ids = original_ids or []
         self._client = client
         self._filepath = filepath
         self._name = name
@@ -2317,6 +2389,8 @@ class UploadProgressWindow(tk.Toplevel):
         self.view_btn.pack(side="left")
         self.close_btn.state(["!disabled"])
         self.protocol("WM_DELETE_WINDOW", self._close)
+        if self._original_ids:
+            OpenOriginalsDialog(self.master_app, self._original_ids)
 
     def _on_error(self, err):
         message = self.t("upload_status_error").format(err=err)
@@ -2612,7 +2686,8 @@ class GpxCombinerApp:
             messagebox.showerror(self.t("err_nothing_title"), self.t("err_nothing_body"))
             return None
 
-        return base_content[:insert_pos] + "\n" + "\n".join(extra_segments) + base_content[insert_pos:]
+        combined = base_content[:insert_pos] + "\n" + "\n".join(extra_segments) + base_content[insert_pos:]
+        return shift_first_trkpt_time(combined)
 
     def combine_and_save(self):
         combined = self._build_combined_gpx()
@@ -2643,20 +2718,16 @@ class GpxCombinerApp:
     def upload_to_strava(self):
         # Duplicate-avoidance: files this app itself downloaded from Strava
         # are named "<name>_<activity_id>.gpx" — pull those IDs back out so
-        # we can offer to open the originals for review/deletion first
-        # (Strava's own upload dedupe would otherwise reject a re-upload of
-        # the same recording, and deleting isn't possible via the API).
+        # we can offer, once the upload succeeds, to open the originals for
+        # review/deletion (deleting isn't possible via the API). The combined
+        # file's start time is nudged by shift_first_trkpt_time() so this no
+        # longer needs to happen *before* uploading to dodge Strava's own
+        # duplicate-activity rejection.
         original_ids = []
         for f in self.files:
             m = re.search(r"_(\d+)\.gpx$", os.path.basename(f["path"]))
             if m:
                 original_ids.append(m.group(1))
-
-        if original_ids:
-            if messagebox.askyesno(self.t("open_originals_title"),
-                                    self.t("open_originals_body").format(n=len(original_ids))):
-                for aid in original_ids:
-                    webbrowser.open_new_tab(f"https://www.strava.com/activities/{aid}/overview")
 
         client = self.get_strava_client()
         if client is None:
@@ -2699,7 +2770,7 @@ class GpxCombinerApp:
             messagebox.showerror(self.t("strava_title"), str(e))
             return
 
-        UploadProgressWindow(self, client, upload_path, name)
+        UploadProgressWindow(self, client, upload_path, name, original_ids)
 
 
 def main():

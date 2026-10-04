@@ -4,6 +4,11 @@ This summarizes what changed in each version, for both the desktop app (`gpx_com
 
 ## Desktop app
 
+### 3.8
+- "Combine and save" confirmation now has an "Open folder" button underneath OK, revealing the saved file in Finder/Explorer without closing the app
+- The combined file's first point timestamp is nudged back by one second, which stops Strava from flagging a combined file as a duplicate of one of its own source activities
+- The "open original activities to delete them" prompt now appears after a successful upload instead of before it (no longer needed to dodge a duplicate error) — with "Open each one in a new tab" and "Open Activities page" buttons
+
 ### 3.7.9
 - Combined GPX now gets its own `<name>` (the source files' names joined with " + "), instead of keeping whichever source file happened to sort first chronologically
 - `creator="GPX Combiner"` is now always the first attribute on `<gpx>`, matching the layout Strava's own exports use, regardless of where an existing `creator` attribute sat

@@ -10,6 +10,7 @@ HR/cadence/power/temperature extension fields.
 """
 
 import re
+from datetime import datetime, timedelta, timezone
 
 TRKSEG_RE = re.compile(r"<trkseg\b.*?</trkseg>", re.S | re.I)
 TIME_RE = re.compile(r"<time>(.*?)</time>", re.S | re.I)
@@ -60,6 +61,26 @@ def extract_first_trkseg(content):
     """The first <trkseg>...</trkseg> block (tags included), or None."""
     m = TRKSEG_RE.search(content)
     return m.group(0) if m else None
+
+
+def shift_first_trkpt_time(content, delta_seconds=-1):
+    """Nudges the very first <time> in the file (the combined track's
+    starting timestamp) by delta_seconds. Strava's duplicate-activity
+    detection matches an upload against existing activities by exact start
+    time; when the combined file's first point is identical to one of its
+    own source activities (the usual case), this tiny, imperceptible offset
+    is enough to stop Strava flagging it as a duplicate. Leaves the file
+    untouched if the first <time> can't be parsed."""
+    m = TIME_RE.search(content)
+    if not m:
+        return content
+    try:
+        dt = datetime.strptime(m.group(1).strip(), "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return content
+    shifted = (dt + timedelta(seconds=delta_seconds)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    start, end = m.span(1)
+    return content[:start] + shifted + content[end:]
 
 
 def detect_extension_fields(content):
@@ -120,4 +141,5 @@ def combine_gpx_files(files, include=None):
         extra_segments.append(strip_extension_fields(seg, include))
 
     combined = base_content[:insert_pos] + "\n" + "\n".join(extra_segments) + base_content[insert_pos:]
+    combined = shift_first_trkpt_time(combined)
     return combined, skipped
