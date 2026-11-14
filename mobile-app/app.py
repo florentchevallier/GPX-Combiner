@@ -26,7 +26,7 @@ import os
 import tempfile
 import time
 import urllib.parse
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
 from dotenv import load_dotenv
 from flask import (
@@ -49,7 +49,7 @@ from core.strava_client import (
     StravaAPIError,
     build_gpx_from_activity,
 )
-from core.gpx_core import combine_gpx_files, prepare_single_gpx
+from core.gpx_core import combine_gpx_files, prepare_single_gpx, extract_sort_key, parse_gpx_time
 
 STRAVA_CLIENT_ID = os.environ["STRAVA_CLIENT_ID"]
 STRAVA_CLIENT_SECRET = os.environ["STRAVA_CLIENT_SECRET"]
@@ -60,7 +60,7 @@ OAUTH_REDIRECT_URI = f"{APP_BASE_URL}/oauth/callback"
 # a discreet build counter in the footer, incremented by one on every file
 # handed over, so it's obvious at a glance whether the phone is actually
 # running the latest deploy or an older cached one.
-BUILD_ID = "29"
+BUILD_ID = "30"
 
 app = Flask(__name__)
 app.secret_key = os.environ["FLASK_SECRET_KEY"]
@@ -304,58 +304,56 @@ def activity_track(activity_id):
 
 @app.route("/combine", methods=["POST"])
 def combine():
-    """Combines either Strava activities or locally-imported GPX files —
-    never both at once (the frontend only ever sends one or the other).
-    A single item is accepted too: it is returned on its own, readied for
-    sending (prepare_single_gpx) instead of being combined.
+    """Combines Strava activities, locally-imported GPX files, or a mix of
+    both. A single item is accepted too: it is returned on its own, readied
+    for sending (prepare_single_gpx) instead of being combined.
 
-    Strava mode: receives a list of activities (the full objects as returned
-    by /activities), downloads each one's streams, rebuilds a GPX per
-    activity (build_gpx_from_activity), then combines them chronologically
+    Strava activities: receives the full objects as returned by
+    /activities, downloads each one's streams and rebuilds a GPX per
+    activity (build_gpx_from_activity).
+
+    Local files: the frontend has already read the GPX files from the
+    phone's storage and sends their raw content directly — no Strava call
+    needed.
+
+    Everything is then put in chronological order and combined
     (combine_gpx_files) — exactly like the desktop app does.
 
-    Local-files mode: the frontend has already read the GPX files from the
-    phone's storage and sends their raw content directly — no Strava call
-    needed, just combine_gpx_files.
-
-    Expected JSON body (one of):
+    Expected JSON body (either key, or both):
         {
           "activities": [ {...activity as returned by /activities...}, ... ],
+          "local_files": [ {"name": "...", "content": "<gpx>...</gpx>"}, ... ],
           "include": {"hr": true, "cadence": true, "power": true, "temp": true}  // optional
         }
-        {
-          "local_files": [ {"name": "...", "content": "<gpx>...</gpx>"}, ... ],
-          "include": {...}  // optional, same as above
-        }
 
-    Local-files mode needs no Strava account at all (the "Continue without
-    Strava" guest flow) — login is only required for the Strava-activities
-    branch, which is the only one that actually calls the Strava API.
+    A request with local files only needs no Strava account at all (the
+    "Continue without Strava" guest flow) — login is only required when
+    there are Strava activities to fetch, the only part that actually calls
+    the Strava API.
     """
     body = request.get_json()
     include = body.get("include")  # None => combine_gpx_files keeps everything by default
 
-    if "local_files" in body:
-        local_files = body["local_files"]
-        files = [{"path": f["name"], "content": f["content"]} for f in local_files]
-        # No Strava data involved here, so no chronological re-sort: the
-        # frontend already sorted these by the <time> tag it parsed from
-        # each file before sending them.
-    else:
-        athlete_id, user = _require_login()
-        activities = body["activities"]
-        # combine_gpx_files expects files already sorted chronologically
-        # (oldest first) — same logic as the date sort on desktop.
-        activities_sorted = sorted(activities, key=lambda a: a.get("start_date", ""))
+    files = [{"path": f["name"], "content": f["content"]} for f in body.get("local_files") or []]
 
-        files = []
+    activities = body.get("activities") or []
+    if activities:
+        athlete_id, user = _require_login()
         with _ClientSession(athlete_id, user) as client:
-            for activity in activities_sorted:
+            for activity in activities:
                 streams = client.get_streams(activity["id"])
                 gpx_text = build_gpx_from_activity(activity, streams)
                 if gpx_text is None:
                     continue  # no GPS data — skipped, same as on desktop
                 files.append({"path": f"{activity['id']}.gpx", "content": gpx_text})
+
+    # combine_gpx_files expects files already sorted chronologically (oldest
+    # first). Sorted here on each file's own start time, read the same way
+    # for both sources and compared as real dates (local files don't all
+    # write their times in the same format). A file whose time can't be
+    # read goes last, in the order received.
+    far_future = datetime.max.replace(tzinfo=timezone.utc)
+    files.sort(key=lambda f: parse_gpx_time(extract_sort_key(f["content"], "")) or far_future)
 
     if not files:
         return jsonify({"error": "No GPS data found in the selection."}), 400
