@@ -324,9 +324,19 @@ function getSelectedActivities() {
   return state.activities.filter(a => checked.has(String(a.id)));
 }
 
+// One selected item is allowed too: nothing to combine then, the item just
+// goes on to the review screen by itself (a local GPX to upload, or a copy
+// of an existing activity) — the button says so.
+function combineButtonLabel(count) {
+  if (count !== 1) return "Combine selected activities";
+  return state.mode === "local" ? "Continue with selected file" : "Continue with selected activity";
+}
+
 function updateCombineButtonState() {
   const combineBtn = document.getElementById("combine-btn");
-  combineBtn.disabled = getSelectedActivities().length < 2;
+  const count = getSelectedActivities().length;
+  combineBtn.disabled = count < 1;
+  combineBtn.textContent = combineButtonLabel(count);
 }
 
 function showHomeError(msg) {
@@ -627,11 +637,11 @@ document.getElementById("activity-list").addEventListener("change", updateCombin
 document.getElementById("combine-btn").addEventListener("click", async () => {
   clearHomeError();
   const selected = getSelectedActivities();
-  if (selected.length < 2) return;
+  if (selected.length < 1) return;
 
   const combineBtn = document.getElementById("combine-btn");
   combineBtn.disabled = true;
-  combineBtn.textContent = "Combining…";
+  combineBtn.textContent = selected.length === 1 ? "Preparing…" : "Combining…";
 
   try {
     const body = state.mode === "local"
@@ -647,15 +657,13 @@ document.getElementById("combine-btn").addEventListener("click", async () => {
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      showHomeError(err.error || "Combining failed.");
+      showHomeError(err.error || (selected.length === 1 ? "Preparing the file failed." : "Combining failed."));
       return;
     }
 
     state.combinedBlobText = await res.text();
     openReviewScreen(selected);
   } finally {
-    combineBtn.disabled = false;
-    combineBtn.textContent = "Combine selected activities";
     updateCombineButtonState();
   }
 });

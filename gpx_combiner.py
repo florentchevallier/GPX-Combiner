@@ -86,7 +86,7 @@ def resource_path(filename):
     script."""
     base = getattr(sys, "_MEIPASS", SCRIPT_DIR)
     return os.path.join(base, filename)
-APP_VERSION = "3.8"
+APP_VERSION = "3.8.1"
 CONFIG_PATH = os.path.join(SCRIPT_DIR, "strava_config.json")
 APP_CONFIG_PATH = os.path.join(SCRIPT_DIR, "app_config.json")  # app-wide settings (language...), kept
                                                                  # separate from Strava credentials
@@ -98,6 +98,7 @@ REDIRECT_URI = f"http://localhost:{REDIRECT_PORT}/exchange_token"
 
 TRKSEG_RE = re.compile(r"<trkseg\b.*?</trkseg>", re.S | re.I)
 TIME_RE = re.compile(r"<time>(.*?)</time>", re.S | re.I)
+FIRST_TRKPT_RE = re.compile(r"<trkpt\b[^>]*?(?:/>|>.*?</trkpt>)", re.S | re.I)
 TRKPT_TAG_RE = re.compile(r"<trkpt\b([^>]*)>")
 LAT_ATTR_RE = re.compile(r'lat="(-?[0-9.]+)"')
 LON_ATTR_RE = re.compile(r'lon="(-?[0-9.]+)"')
@@ -818,23 +819,35 @@ def extract_sort_key(content, fallback):
 
 
 def shift_first_trkpt_time(content, delta_seconds=-1):
-    """Nudges the very first <time> in the file (the combined track's
-    starting timestamp) by delta_seconds. Strava's duplicate-activity
-    detection matches an upload against existing activities by exact start
-    time; when the combined file's first point is identical to one of its
-    own source activities (the usual case), this tiny, imperceptible offset
-    is enough to stop Strava flagging it as a duplicate. Leaves the file
-    untouched if the first <time> can't be parsed."""
-    m = TIME_RE.search(content)
+    """Nudges the time of the track's very first point by delta_seconds.
+    Strava's duplicate-activity detection matches an upload against
+    existing activities by exact start time; when the combined file's first
+    point is identical to one of its own source activities (the usual
+    case), this tiny, imperceptible offset is enough to stop Strava
+    flagging it as a duplicate. Targets the first <trkpt> itself, not the
+    file's first <time> (which, in Strava's own exports and most device
+    files, is the one in <metadata>); a <metadata> time equal to the
+    original start is moved along with it so the two stay consistent.
+    Leaves the file untouched if that time can't be parsed."""
+    pt = FIRST_TRKPT_RE.search(content)
+    if not pt:
+        return content
+    m = TIME_RE.search(pt.group(0))
     if not m:
         return content
+    original = m.group(1).strip()
     try:
-        dt = datetime.strptime(m.group(1).strip(), "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        dt = datetime.strptime(original, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
     except ValueError:
         return content
     shifted = (dt + timedelta(seconds=delta_seconds)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    start, end = m.span(1)
-    return content[:start] + shifted + content[end:]
+    start, end = pt.start() + m.start(1), pt.start() + m.end(1)
+    content = content[:start] + shifted + content[end:]
+    header = TIME_RE.search(content[:pt.start()])
+    if header and header.group(1).strip() == original:
+        a, b = header.span(1)
+        content = content[:a] + shifted + content[b:]
+    return content
 
 
 def extract_first_trkseg(content):

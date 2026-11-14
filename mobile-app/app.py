@@ -49,7 +49,7 @@ from core.strava_client import (
     StravaAPIError,
     build_gpx_from_activity,
 )
-from core.gpx_core import combine_gpx_files
+from core.gpx_core import combine_gpx_files, prepare_single_gpx
 
 STRAVA_CLIENT_ID = os.environ["STRAVA_CLIENT_ID"]
 STRAVA_CLIENT_SECRET = os.environ["STRAVA_CLIENT_SECRET"]
@@ -60,7 +60,7 @@ OAUTH_REDIRECT_URI = f"{APP_BASE_URL}/oauth/callback"
 # a discreet build counter in the footer, incremented by one on every file
 # handed over, so it's obvious at a glance whether the phone is actually
 # running the latest deploy or an older cached one.
-BUILD_ID = "27"
+BUILD_ID = "29"
 
 app = Flask(__name__)
 app.secret_key = os.environ["FLASK_SECRET_KEY"]
@@ -306,6 +306,8 @@ def activity_track(activity_id):
 def combine():
     """Combines either Strava activities or locally-imported GPX files —
     never both at once (the frontend only ever sends one or the other).
+    A single item is accepted too: it is returned on its own, readied for
+    sending (prepare_single_gpx) instead of being combined.
 
     Strava mode: receives a list of activities (the full objects as returned
     by /activities), downloads each one's streams, rebuilds a GPX per
@@ -355,12 +357,19 @@ def combine():
                     continue  # no GPS data — skipped, same as on desktop
                 files.append({"path": f"{activity['id']}.gpx", "content": gpx_text})
 
-    if len(files) < 2:
-        return jsonify({
-            "error": "Need at least two GPX files with GPS data to combine."
-        }), 400
+    if not files:
+        return jsonify({"error": "No GPS data found in the selection."}), 400
 
-    combined_text, skipped = combine_gpx_files(files, include=include)
+    if len(files) == 1:
+        # A single item: nothing to combine, the file is just readied to be
+        # sent on its own (e.g. a local GPX to upload, or a copy of an
+        # existing activity).
+        try:
+            combined_text, skipped = prepare_single_gpx(files[0]["content"], include=include), []
+        except ValueError:
+            return jsonify({"error": "No GPS track found in this file."}), 400
+    else:
+        combined_text, skipped = combine_gpx_files(files, include=include)
 
     buffer = io.BytesIO(combined_text.encode("utf-8"))
     response = send_file(

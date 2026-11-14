@@ -9,11 +9,13 @@ chronological order" approach, same optional stripping of the
 HR/cadence/power/temperature extension fields.
 """
 
+import math
 import re
 from datetime import datetime, timedelta, timezone
 
 TRKSEG_RE = re.compile(r"<trkseg\b.*?</trkseg>", re.S | re.I)
 TIME_RE = re.compile(r"<time>(.*?)</time>", re.S | re.I)
+FIRST_TRKPT_RE = re.compile(r"<trkpt\b[^>]*?(?:/>|>.*?</trkpt>)", re.S | re.I)
 
 EXTENSION_FIELDS = ["hr", "cadence", "power", "temp"]
 EXTENSION_FIELD_LABELS = {"hr": "HR", "cadence": "Cadence", "power": "Power", "temp": "Temp"}
@@ -64,23 +66,35 @@ def extract_first_trkseg(content):
 
 
 def shift_first_trkpt_time(content, delta_seconds=-1):
-    """Nudges the very first <time> in the file (the combined track's
-    starting timestamp) by delta_seconds. Strava's duplicate-activity
-    detection matches an upload against existing activities by exact start
-    time; when the combined file's first point is identical to one of its
-    own source activities (the usual case), this tiny, imperceptible offset
-    is enough to stop Strava flagging it as a duplicate. Leaves the file
-    untouched if the first <time> can't be parsed."""
-    m = TIME_RE.search(content)
+    """Nudges the time of the track's very first point by delta_seconds.
+    Strava's duplicate-activity detection matches an upload against
+    existing activities by exact start time; when the combined file's first
+    point is identical to one of its own source activities (the usual
+    case), this tiny, imperceptible offset is enough to stop Strava
+    flagging it as a duplicate. Targets the first <trkpt> itself, not the
+    file's first <time> (which, in Strava's own exports and most device
+    files, is the one in <metadata>); a <metadata> time equal to the
+    original start is moved along with it so the two stay consistent.
+    Leaves the file untouched if that time can't be parsed."""
+    pt = FIRST_TRKPT_RE.search(content)
+    if not pt:
+        return content
+    m = TIME_RE.search(pt.group(0))
     if not m:
         return content
+    original = m.group(1).strip()
     try:
-        dt = datetime.strptime(m.group(1).strip(), "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+        dt = datetime.strptime(original, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
     except ValueError:
         return content
     shifted = (dt + timedelta(seconds=delta_seconds)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    start, end = m.span(1)
-    return content[:start] + shifted + content[end:]
+    start, end = pt.start() + m.start(1), pt.start() + m.end(1)
+    content = content[:start] + shifted + content[end:]
+    header = TIME_RE.search(content[:pt.start()])
+    if header and header.group(1).strip() == original:
+        a, b = header.span(1)
+        content = content[:a] + shifted + content[b:]
+    return content
 
 
 def detect_extension_fields(content):
@@ -143,3 +157,161 @@ def combine_gpx_files(files, include=None):
     combined = base_content[:insert_pos] + "\n" + "\n".join(extra_segments) + base_content[insert_pos:]
     combined = shift_first_trkpt_time(combined)
     return combined, skipped
+
+
+def prepare_single_gpx(content, include=None):
+    """The one-file counterpart of combine_gpx_files(): readies a single
+    GPX to be sent on its own — same optional stripping of the
+    HR/cadence/power/temp fields, same one-second nudge of the first point
+    (so a copy of an activity that still exists on Strava isn't rejected
+    as its duplicate). Raises ValueError if the file has no track."""
+    if extract_first_trkseg(content) is None:
+        raise ValueError("File has no track (<trkseg>)")
+    if include is None:
+        include = {k: True for k in EXTENSION_FIELDS}
+    return shift_first_trkpt_time(strip_extension_fields(content, include))
+
+
+# ----------------------------------------------------------------------------
+# Trimming a single GPX (keeping only a portion) and finding its pauses
+# ----------------------------------------------------------------------------
+
+# One whole track point, either self-closing (<trkpt .../>) or with children.
+TRKPT_BLOCK_RE = re.compile(r"<trkpt\b[^>]*?(?:/>|>.*?</trkpt>)", re.S | re.I)
+LAT_RE = re.compile(r"""\blat\s*=\s*["']([^"']+)["']""", re.I)
+LON_RE = re.compile(r"""\blon\s*=\s*["']([^"']+)["']""", re.I)
+EMPTY_TRKSEG_RE = re.compile(r"[ \t]*<trkseg\b[^>]*>\s*</trkseg>[ \t]*\n?", re.I)
+ISO_TIME_RE = re.compile(
+    r"(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d):(\d\d)(?:\.\d+)?\s*(Z|[+-]\d\d:?\d\d)?", re.I)
+
+# Defaults for find_pauses(): a first setting, to be tuned with real use.
+PAUSE_MIN_GAP_SECONDS = 60
+PAUSE_MIN_JUMP_METERS = 200
+
+
+def parse_gpx_time(value):
+    """A GPX <time> value as an aware UTC datetime, or None if it can't be
+    read. Accepts "Z" or a numeric offset, with or without fractional
+    seconds (dropped); a time with no zone at all is taken as UTC."""
+    m = ISO_TIME_RE.search(value or "")
+    if not m:
+        return None
+    try:
+        dt = datetime(*(int(g) for g in m.groups()[:6]), tzinfo=timezone.utc)
+    except ValueError:
+        return None
+    zone = m.group(7)
+    if zone and zone.upper() != "Z":
+        digits = zone[1:].replace(":", "")
+        offset = timedelta(hours=int(digits[:2]), minutes=int(digits[2:]))
+        dt = dt - offset if zone[0] == "+" else dt + offset
+    return dt
+
+
+def haversine_meters(lat1, lon1, lat2, lon2):
+    """Great-circle distance between two points, in meters."""
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    a = (math.sin((p2 - p1) / 2) ** 2
+         + math.cos(p1) * math.cos(p2) * math.sin(math.radians(lon2 - lon1) / 2) ** 2)
+    return 2 * 6371000 * math.asin(math.sqrt(a))
+
+
+def list_trkpts(content):
+    """Every track point of the file, in file order and across all
+    <trkseg> blocks: a list of {"lat": float, "lon": float,
+    "time": datetime or None}. A point's position in this list is the
+    index that find_pauses() and trim_gpx() work with. Points whose lat/lon
+    can't be read are still listed (lat/lon None) so indexes stay aligned
+    with the file."""
+    points = []
+    for m in TRKPT_BLOCK_RE.finditer(content):
+        block = m.group(0)
+        tag = block[:block.find(">") + 1]
+        lat_m, lon_m = LAT_RE.search(tag), LON_RE.search(tag)
+        try:
+            lat, lon = float(lat_m.group(1)), float(lon_m.group(1))
+        except (AttributeError, ValueError):
+            lat = lon = None
+        time_m = TIME_RE.search(block)
+        points.append({"lat": lat, "lon": lon,
+                       "time": parse_gpx_time(time_m.group(1)) if time_m else None})
+    return points
+
+
+def find_pauses(content, min_gap_seconds=PAUSE_MIN_GAP_SECONDS,
+                min_jump_meters=PAUSE_MIN_JUMP_METERS):
+    """Candidate cut points: every place where two consecutive track
+    points are at least min_gap_seconds apart in time OR at least
+    min_jump_meters apart on the ground (a recording paused during a bus
+    ride shows both; a stop on the spot shows only the first).
+
+    Returns a list of {"index": i, "gap_seconds": float or None,
+    "jump_meters": float or None, "time_before": datetime or None,
+    "time_after": datetime or None}, where i is the index (see
+    list_trkpts) of the last point BEFORE the pause — so the part before
+    is points 0..i and the part after starts at i + 1. Biggest jumps
+    first, then longest gaps. Never cuts anything by itself."""
+    points = list_trkpts(content)
+    pauses = []
+    for i in range(len(points) - 1):
+        a, b = points[i], points[i + 1]
+        gap = None
+        if a["time"] and b["time"]:
+            gap = (b["time"] - a["time"]).total_seconds()
+        jump = None
+        if None not in (a["lat"], a["lon"], b["lat"], b["lon"]):
+            jump = haversine_meters(a["lat"], a["lon"], b["lat"], b["lon"])
+        if (gap is not None and gap >= min_gap_seconds) or (jump is not None and jump >= min_jump_meters):
+            pauses.append({"index": i, "gap_seconds": gap, "jump_meters": jump,
+                           "time_before": a["time"], "time_after": b["time"]})
+    pauses.sort(key=lambda p: (-(p["jump_meters"] or 0), -(p["gap_seconds"] or 0)))
+    return pauses
+
+
+def trim_gpx(content, start_index, end_index):
+    """Keeps only track points start_index..end_index (both included,
+    indexes as in list_trkpts) and removes the others, leaving everything
+    else in the file untouched (header, metadata, name, type, extensions
+    of the kept points). A <trkseg> left with no point is removed too,
+    and a <metadata> <time>, if any, is set to the first kept point's time.
+    Raises ValueError if the range is invalid or keeps fewer than 2
+    points."""
+    matches = list(TRKPT_BLOCK_RE.finditer(content))
+    total = len(matches)
+    if not (0 <= start_index <= end_index < total):
+        raise ValueError(f"Invalid range {start_index}..{end_index} for {total} track points")
+    if end_index - start_index < 1:
+        raise ValueError("A trimmed track needs at least 2 points")
+
+    out, pos = [], 0
+    for i, m in enumerate(matches):
+        if start_index <= i <= end_index:
+            continue
+        # Drop the point together with its own line (leading indent and
+        # trailing newline), so no blank lines are left behind.
+        begin = m.start()
+        while begin > pos and content[begin - 1] in " \t":
+            begin -= 1
+        end = m.end()
+        while end < len(content) and content[end] in " \t":
+            end += 1
+        if end < len(content) and content[end] == "\r":
+            end += 1
+        if end < len(content) and content[end] == "\n":
+            end += 1
+        out.append(content[pos:begin])
+        pos = end
+    out.append(content[pos:])
+    trimmed = EMPTY_TRKSEG_RE.sub("", "".join(out))
+
+    # A file-level <time> (the one in <metadata>, before the first point)
+    # states when the track starts — this app sorts files by it. Once the
+    # beginning is cut off it would be stale, so align it with the first
+    # point that's left.
+    first_pt = TRKPT_BLOCK_RE.search(trimmed)
+    header_time = TIME_RE.search(trimmed[:first_pt.start()])
+    first_pt_time = TIME_RE.search(first_pt.group(0))
+    if header_time and first_pt_time:
+        a, b = header_time.span(1)
+        trimmed = trimmed[:a] + first_pt_time.group(1).strip() + trimmed[b:]
+    return trimmed

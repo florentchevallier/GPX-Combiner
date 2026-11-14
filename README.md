@@ -11,7 +11,7 @@
 <p align="center">
   <img alt="platform" src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-informational">
   <img alt="python" src="https://img.shields.io/badge/python-3.9%2B-blue">
-  <img alt="version" src="https://img.shields.io/badge/version-3.7.9-orange">
+  <img alt="version" src="https://img.shields.io/badge/version-3.8.1-orange">
   <img alt="license" src="https://img.shields.io/badge/license-GPL--3.0--or--later-blue">
 </p>
 
@@ -269,7 +269,7 @@ A companion mobile web app lives in [`mobile-app/`](mobile-app/) — a small Fla
 
 ### What it does
 
-- **View recent Strava activities** on your phone (paginated, 5 at a time, up to 10 loaded at once — 20 in Pro mode) and select at least two to combine. Past that cap, a hint points to the desktop app for browsing further back.
+- **View recent Strava activities** on your phone (paginated, 5 at a time, up to 10 loaded at once — 20 in Pro mode) and select two or more to combine — or a single one to send it on its own (a local GPX to upload, or a copy of an existing activity). Past that cap, a hint points to the desktop app for browsing further back.
 - **Or continue without Strava**: a "Continue without Strava" option on the login screen skips authentication entirely and goes straight to combining local GPX files — no Strava account needed at all. The "Upload to Strava" option is hidden in this mode, since there's no linked account to upload to.
 - **Import local GPX files instead** ("Load local GPX" button): an alternative source to Strava, never mixed with it — picking files replaces the list rather than appending to it. Sport is auto-detected from the file's own `<type>` tag when present (matching the value Strava's own exports and this project's own files use), sorted chronologically from each file's `<time>` tag.
 - **Map preview**: a 🗺️ button toggles an OpenStreetMap preview in place, on both the file/activity selection screen (each selected activity or file drawn in its own color, with a legend) and the review screen (the combined track). Same non-green color palette as the desktop app.
@@ -317,4 +317,4 @@ See [`CHANGELOG.md`](CHANGELOG.md) for the full version history of both the desk
 
 ---
 
-<p align="center"><sub>Version 3.7.9</sub></p>
+<p align="center"><sub>Version 3.8.1</sub></p>

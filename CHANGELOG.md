@@ -4,6 +4,9 @@ This summarizes what changed in each version, for both the desktop app (`gpx_com
 
 ## Desktop app
 
+### 3.8.1
+- The one-second nudge that avoids Strava's duplicate detection now targets the track's first point itself. Previously it changed the first `<time>` found in the file, which in files that carry a `<metadata>` time (Strava's own exports, most device files) is not the first point
+
 ### 3.8
 - "Combine and save" confirmation now has an "Open folder" button underneath OK, revealing the saved file in Finder/Explorer without closing the app
 - The combined file's first point timestamp is nudged back by one second, which stops Strava from flagging a combined file as a duplicate of one of its own source activities
