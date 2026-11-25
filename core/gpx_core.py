@@ -185,7 +185,7 @@ ISO_TIME_RE = re.compile(
     r"(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d):(\d\d)(?:\.\d+)?\s*(Z|[+-]\d\d:?\d\d)?", re.I)
 
 # Defaults for find_pauses(): a first setting, to be tuned with real use.
-PAUSE_MIN_GAP_SECONDS = 60
+PAUSE_MIN_GAP_SECONDS = 120
 PAUSE_MIN_JUMP_METERS = 200
 
 
@@ -249,8 +249,9 @@ def find_pauses(content, min_gap_seconds=PAUSE_MIN_GAP_SECONDS,
     "jump_meters": float or None, "time_before": datetime or None,
     "time_after": datetime or None}, where i is the index (see
     list_trkpts) of the last point BEFORE the pause — so the part before
-    is points 0..i and the part after starts at i + 1. Biggest jumps
-    first, then longest gaps. Never cuts anything by itself."""
+    is points 0..i and the part after starts at i + 1. Longest gaps first
+    (a jump only breaks a tie, or ranks pauses with no times). Never cuts
+    anything by itself."""
     points = list_trkpts(content)
     pauses = []
     for i in range(len(points) - 1):
@@ -264,28 +265,48 @@ def find_pauses(content, min_gap_seconds=PAUSE_MIN_GAP_SECONDS,
         if (gap is not None and gap >= min_gap_seconds) or (jump is not None and jump >= min_jump_meters):
             pauses.append({"index": i, "gap_seconds": gap, "jump_meters": jump,
                            "time_before": a["time"], "time_after": b["time"]})
-    pauses.sort(key=lambda p: (-(p["jump_meters"] or 0), -(p["gap_seconds"] or 0)))
+    pauses.sort(key=lambda p: (-(p["gap_seconds"] or 0), -(p["jump_meters"] or 0)))
     return pauses
 
 
 def trim_gpx(content, start_index, end_index):
     """Keeps only track points start_index..end_index (both included,
-    indexes as in list_trkpts) and removes the others, leaving everything
-    else in the file untouched (header, metadata, name, type, extensions
-    of the kept points). A <trkseg> left with no point is removed too,
-    and a <metadata> <time>, if any, is set to the first kept point's time.
-    Raises ValueError if the range is invalid or keeps fewer than 2
-    points."""
+    indexes as in list_trkpts) — see keep_trkpt_ranges()."""
+    return keep_trkpt_ranges(content, [(start_index, end_index)])
+
+
+def keep_trkpt_ranges(content, ranges):
+    """Keeps only the track points inside the given ranges — a list of
+    (start, end) index pairs, both included, indexes as in list_trkpts —
+    and removes the others, leaving everything else in the file untouched
+    (header, metadata, name, type, extensions of the kept points). Several
+    ranges keep several parts of the track, e.g. the segments before and
+    after a pause but not the pause itself; the parts stay in one track,
+    with a gap where points were removed (as if the recording had been
+    paused there). A <trkseg> left with no point is removed too, and a
+    <metadata> <time>, if any, is set to the first kept point's time.
+    Raises ValueError if a range is invalid, ranges overlap, or fewer than
+    2 points are kept in all."""
     matches = list(TRKPT_BLOCK_RE.finditer(content))
     total = len(matches)
-    if not (0 <= start_index <= end_index < total):
-        raise ValueError(f"Invalid range {start_index}..{end_index} for {total} track points")
-    if end_index - start_index < 1:
+    ranges = sorted((int(a), int(b)) for a, b in ranges)
+    if not ranges:
+        raise ValueError("No range to keep")
+    for k, (a, b) in enumerate(ranges):
+        if not (0 <= a <= b < total):
+            raise ValueError(f"Invalid range {a}..{b} for {total} track points")
+        if k > 0 and a <= ranges[k - 1][1]:
+            raise ValueError("Ranges overlap")
+    if sum(b - a + 1 for a, b in ranges) < 2:
         raise ValueError("A trimmed track needs at least 2 points")
+    keep = [False] * total
+    for a, b in ranges:
+        for i in range(a, b + 1):
+            keep[i] = True
 
     out, pos = [], 0
     for i, m in enumerate(matches):
-        if start_index <= i <= end_index:
+        if keep[i]:
             continue
         # Drop the point together with its own line (leading indent and
         # trailing newline), so no blank lines are left behind.

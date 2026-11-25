@@ -49,7 +49,14 @@ from core.strava_client import (
     StravaAPIError,
     build_gpx_from_activity,
 )
-from core.gpx_core import combine_gpx_files, prepare_single_gpx, extract_sort_key, parse_gpx_time
+from core.gpx_core import (
+    combine_gpx_files,
+    prepare_single_gpx,
+    extract_sort_key,
+    parse_gpx_time,
+    list_trkpts,
+    keep_trkpt_ranges,
+)
 
 STRAVA_CLIENT_ID = os.environ["STRAVA_CLIENT_ID"]
 STRAVA_CLIENT_SECRET = os.environ["STRAVA_CLIENT_SECRET"]
@@ -60,7 +67,7 @@ OAUTH_REDIRECT_URI = f"{APP_BASE_URL}/oauth/callback"
 # a discreet build counter in the footer, incremented by one on every file
 # handed over, so it's obvious at a glance whether the phone is actually
 # running the latest deploy or an older cached one.
-BUILD_ID = "30"
+BUILD_ID = "34"
 
 app = Flask(__name__)
 app.secret_key = os.environ["FLASK_SECRET_KEY"]
@@ -291,15 +298,35 @@ def list_activities():
 
 @app.route("/activities/<int:activity_id>/track")
 def activity_track(activity_id):
-    """Just the lat/lon points for one Strava activity — used by the map
-    preview on the selection screen, before anything is combined. Cheaper
-    than reusing /combine's build_gpx_from_activity for this: the map only
-    needs coordinates, not a full GPX file."""
+    """The lat/lon points of one Strava activity, with each point's time as
+    seconds from the start — used by the map preview and the trim screen on
+    the selection screen, before anything is combined. Cheaper than reusing
+    /combine's build_gpx_from_activity for this: no full GPX file needed.
+    The times come with the same Strava response as the points, so they
+    cost no extra request."""
     athlete_id, user = _require_login()
     with _ClientSession(athlete_id, user) as client:
         streams = client.get_streams(activity_id)
     points = streams.get("latlng", {}).get("data") or []
-    return jsonify({"points": points})
+    times = streams.get("time", {}).get("data") or []
+    return jsonify({"points": points, "times": times})
+
+
+def _apply_trim(content, trim):
+    """Keeps only the parts of one file chosen on the trim screen: trim is
+    {"ranges": [[i, j], ...]}, each range a first and last track point to
+    keep (both included), indexes as keep_trkpt_ranges() counts them — the
+    phone counts them the same way. Several ranges keep several segments,
+    e.g. around a pause. The last range is capped to the file's last point,
+    as a safety net should the two counts ever differ by a few points at
+    the end. Raises ValueError if the ranges don't fit."""
+    if not trim:
+        return content
+    last = len(list_trkpts(content)) - 1
+    ranges = [[int(a), int(b)] for a, b in trim.get("ranges") or []]
+    if ranges and ranges[-1][1] > last:
+        ranges[-1][1] = last
+    return keep_trkpt_ranges(content, ranges)
 
 
 @app.route("/combine", methods=["POST"])
@@ -319,10 +346,14 @@ def combine():
     Everything is then put in chronological order and combined
     (combine_gpx_files) — exactly like the desktop app does.
 
+    Each item can carry a "trim" ({"ranges": [[i, j], ...]}, see
+    _apply_trim) set on the trim screen: only those parts of it are then
+    used.
+
     Expected JSON body (either key, or both):
         {
-          "activities": [ {...activity as returned by /activities...}, ... ],
-          "local_files": [ {"name": "...", "content": "<gpx>...</gpx>"}, ... ],
+          "activities": [ {...activity as returned by /activities..., "trim": {...} or null}, ... ],
+          "local_files": [ {"name": "...", "content": "<gpx>...</gpx>", "trim": {...} or null}, ... ],
           "include": {"hr": true, "cadence": true, "power": true, "temp": true}  // optional
         }
 
@@ -334,18 +365,23 @@ def combine():
     body = request.get_json()
     include = body.get("include")  # None => combine_gpx_files keeps everything by default
 
-    files = [{"path": f["name"], "content": f["content"]} for f in body.get("local_files") or []]
+    try:
+        files = [{"path": f["name"], "content": _apply_trim(f["content"], f.get("trim"))}
+                 for f in body.get("local_files") or []]
 
-    activities = body.get("activities") or []
-    if activities:
-        athlete_id, user = _require_login()
-        with _ClientSession(athlete_id, user) as client:
-            for activity in activities:
-                streams = client.get_streams(activity["id"])
-                gpx_text = build_gpx_from_activity(activity, streams)
-                if gpx_text is None:
-                    continue  # no GPS data — skipped, same as on desktop
-                files.append({"path": f"{activity['id']}.gpx", "content": gpx_text})
+        activities = body.get("activities") or []
+        if activities:
+            athlete_id, user = _require_login()
+            with _ClientSession(athlete_id, user) as client:
+                for activity in activities:
+                    streams = client.get_streams(activity["id"])
+                    gpx_text = build_gpx_from_activity(activity, streams)
+                    if gpx_text is None:
+                        continue  # no GPS data — skipped, same as on desktop
+                    files.append({"path": f"{activity['id']}.gpx",
+                                  "content": _apply_trim(gpx_text, activity.get("trim"))})
+    except ValueError:
+        return jsonify({"error": "A trimmed part no longer fits its track. Open the trim screen again and re-apply."}), 400
 
     # combine_gpx_files expects files already sorted chronologically (oldest
     # first). Sorted here on each file's own start time, read the same way

@@ -173,6 +173,156 @@ h2 { font-size: 1.1rem; margin: 20px 0 10px; }
 .activity-info { flex: 1; }
 .activity-name { font-weight: 600; }
 .activity-meta { font-size: 0.85rem; color: var(--muted); margin-top: 2px; }
+.activity-trim { font-size: 0.8rem; color: var(--accent); margin-top: 2px; }
+.trim-btn {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-alt);
+  font-size: 1.1rem;
+  cursor: pointer;
+}
+
+/* Trim screen: two range inputs stacked on one track, so they read as a
+   single slider with two handles. The inputs themselves ignore touches;
+   only their handles take them. */
+.trim-slider { position: relative; height: 36px; margin: 6px 0 4px; }
+.trim-slider::before {
+  content: "";
+  position: absolute;
+  left: 13px;
+  right: 13px;
+  top: 16px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+}
+.trim-slider-fill {
+  position: absolute;
+  top: 16px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--accent);
+  z-index: 1;
+}
+.trim-slider input[type="range"] {
+  position: absolute;
+  left: 0;
+  top: 5px;
+  width: 100%;
+  height: 26px;
+  margin: 0;
+  background: none;
+  pointer-events: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.trim-slider input[type="range"]::-webkit-slider-runnable-track { height: 26px; background: transparent; }
+.trim-slider input[type="range"]::-moz-range-track { height: 26px; background: transparent; }
+.trim-slider input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  pointer-events: auto;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 3px solid var(--accent);
+  background: var(--accent);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+}
+.trim-slider input[type="range"]::-moz-range-thumb {
+  pointer-events: auto;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 3px solid var(--accent);
+  background: var(--accent);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+}
+/* Same convention as the map: start = filled, end = white with a ring. */
+.trim-slider input.trim-end::-webkit-slider-thumb { background: #fff; }
+.trim-slider input.trim-end::-moz-range-thumb { background: #fff; }
+
+.trim-tick {
+  position: absolute;
+  top: 11px;
+  width: 2px;
+  height: 14px;
+  margin-left: -1px;
+  background: var(--muted);
+  z-index: 1;
+}
+
+.trim-nudges { display: flex; justify-content: space-between; margin: 2px 0 6px; }
+.trim-nudge-pair { display: flex; gap: 8px; }
+.trim-nudge {
+  width: 44px;
+  height: 36px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-alt);
+  color: var(--text);
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+.trim-nudge:disabled { opacity: 0.4; cursor: default; }
+
+.trim-color-row { display: flex; align-items: center; gap: 8px; margin: -8px 0 10px; font-size: 0.9rem; }
+.trim-color-row input { width: 18px; height: 18px; margin: 0; }
+
+.trim-times { text-align: center; font-weight: 600; margin: 4px 0 2px; }
+.trim-stats { text-align: center; color: var(--muted); font-size: 0.9rem; margin: 0 0 8px; }
+.trim-subheading { font-size: 1rem; margin: 16px 0 4px; }
+.trim-segments { list-style: none; padding: 0; margin: 0 0 8px; }
+.trim-seg label { display: flex; align-items: center; gap: 8px; padding: 8px 0; font-size: 0.95rem; }
+.trim-seg input[type="checkbox"] { width: 20px; height: 20px; flex-shrink: 0; margin: 0; }
+.trim-seg-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+.trim-pause {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0 2px 28px;
+  border-top: 1px dashed var(--border);
+  border-bottom: 1px dashed var(--border);
+}
+.trim-pause-info { flex: 1; color: var(--muted); font-size: 0.85rem; }
+.trim-pause .btn-small { width: auto; margin: 4px 0; padding: 6px 10px; font-size: 0.8rem; }
+
+/* Segment numbers on the trim map; greyed out when the segment isn't kept. */
+/* Leaflet forces display: block on markers, so the number is centered with
+   text-align + line-height (20 px icon - 2 x 2 px border). */
+.trim-seg-label {
+  text-align: center;
+  line-height: 16px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  background: var(--accent);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+.trim-seg-label.trim-seg-label-off { background: #888; }
 
 .error { color: var(--error); font-size: 0.9rem; }
 .hint { color: var(--muted); font-size: 0.9rem; line-height: 1.4; }

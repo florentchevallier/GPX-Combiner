@@ -106,6 +106,60 @@
       </button>
     </section>
 
+    <!-- ===================== Screen: trim one activity or file ===================== -->
+    <section id="view-trim" class="view hidden">
+      <div class="page-header">
+        <a class="logo-block" href="https://github.com/florentchevallier/GPX-Combiner" target="_blank" rel="noopener">
+          <img class="app-logo" src="{{ url_for('static', filename='img/logo.png') }}" alt="GPX Combiner logo">
+        </a>
+        <div class="page-header-text">
+          <h1>GPX Combiner <span class="accent">mobile</span></h1>
+        </div>
+      </div>
+
+      <div class="page-intro">
+        <h2 id="trim-title">Trim</h2>
+        <p class="hint">
+          Tick the segments to keep, then fine-tune the start and the end
+          with the handles or the ‹ › buttons. The original is never changed.
+        </p>
+      </div>
+
+      <div id="trim-map" class="map-preview"></div>
+      <label id="trim-color-row" class="trim-color-row hidden">
+        <input type="checkbox" id="trim-color-toggle"> Color each segment
+      </label>
+
+      <div class="trim-slider">
+        <div id="trim-slider-fill" class="trim-slider-fill"></div>
+        <input type="range" id="trim-start" class="trim-start" min="0" max="1" step="1" value="0" aria-label="Start of the kept part">
+        <input type="range" id="trim-end" class="trim-end" min="0" max="1" step="1" value="1" aria-label="End of the kept part">
+      </div>
+      <div class="trim-nudges">
+        <div class="trim-nudge-pair">
+          <button type="button" class="trim-nudge" data-handle="start" data-dir="-1" aria-label="Start one point earlier">‹</button>
+          <button type="button" class="trim-nudge" data-handle="start" data-dir="1" aria-label="Start one point later">›</button>
+        </div>
+        <div class="trim-nudge-pair">
+          <button type="button" class="trim-nudge" data-handle="end" data-dir="-1" aria-label="End one point earlier">‹</button>
+          <button type="button" class="trim-nudge" data-handle="end" data-dir="1" aria-label="End one point later">›</button>
+        </div>
+      </div>
+      <p id="trim-times" class="trim-times"></p>
+      <p id="trim-stats" class="trim-stats"></p>
+
+      <h3 id="trim-segments-heading" class="trim-subheading hidden">Segments</h3>
+      <ul id="trim-segments" class="trim-segments"></ul>
+
+      <p id="trim-error" class="error hidden"></p>
+
+      <button id="trim-apply-btn" class="btn btn-primary" type="button">Apply</button>
+      <div class="btn-row">
+        <button id="trim-reset-btn" class="btn btn-secondary" type="button">Reset</button>
+        <button id="trim-cancel-btn" class="btn btn-secondary" type="button">Cancel</button>
+      </div>
+    </section>
+
     <!-- ===================== Screen: review before upload ===================== -->
     <section id="view-review" class="view hidden">
       <div class="page-header">

@@ -170,6 +170,15 @@ function formatDuration(seconds) {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
+// A time of day from a timestamp in ms (shown in the phone's own time
+// zone), or "—" when the point has no time.
+function formatClock(ms, withSeconds = true) {
+  if (ms == null) return "—";
+  const opts = { hour: "2-digit", minute: "2-digit" };
+  if (withSeconds) opts.second = "2-digit";
+  return new Date(ms).toLocaleTimeString("en-GB", opts);
+}
+
 function formatDate(isoLocal) {
   const d = new Date(isoLocal);
   return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
@@ -324,12 +333,20 @@ function renderActivityList() {
     const id = String(activity.id);
     const isChecked = wasChecked.has(id) || (activity._isLocal && !known.has(id));
     const checkedAttr = isChecked ? "checked" : "";
+    const t = activity._trim;
+    const trimLine = t
+      ? `<div class="activity-trim">✂️ Trimmed: ${formatClock(t.startTime, false)} → ${formatClock(t.endTime, false)}` +
+        `${t.ranges.length > 1 ? ` · ${t.ranges.length} parts` : ""}</div>`
+      : "";
     li.innerHTML = `
       <input type="checkbox" data-id="${escapeHtml(id)}" ${checkedAttr}>
       <div class="activity-info">
         <div class="activity-name">${escapeHtml(activity.name)}</div>
         <div class="activity-meta">${metaLine}</div>
+        ${trimLine}
       </div>
+      <button type="button" class="trim-btn" data-trim-id="${escapeHtml(id)}"
+              title="Trim" aria-label="Trim ${escapeHtml(activity.name)}">✂️</button>
     `;
     list.appendChild(li);
   }
@@ -395,22 +412,27 @@ function ensureMap(containerId, key) {
   return mapInstances[key];
 }
 
+// Removes everything drawn on a map — tracks, dots, labels — but not the
+// map tiles themselves.
 function clearMapLayers(map) {
   map.eachLayer((layer) => {
-    if (layer instanceof L.Polyline || layer instanceof L.CircleMarker) {
-      map.removeLayer(layer);
-    }
+    if (!(layer instanceof L.TileLayer)) map.removeLayer(layer);
   });
 }
 
 // Start = filled dot in the track's color; finish = white-filled dot with a
 // colored ring — a simple way to tell the two ends apart without needing
 // custom marker icons.
+// points: [[lat, lon], ...], or a list of such parts for a track trimmed
+// into several parts (drawn as one line with gaps).
 function drawTrack(map, points, color) {
-  if (!points || points.length < 2) return null;
-  const line = L.polyline(points, { color, weight: 4 }).addTo(map);
-  L.circleMarker(points[0], { radius: 6, color: "#fff", weight: 2, fillColor: color, fillOpacity: 1 }).addTo(map);
-  L.circleMarker(points[points.length - 1], { radius: 6, color, weight: 2, fillColor: "#fff", fillOpacity: 1 }).addTo(map);
+  if (!points || points.length === 0) return null;
+  const parts = Array.isArray(points[0][0]) ? points : [points];
+  const flat = parts.flat();
+  if (flat.length < 2) return null;
+  const line = L.polyline(parts, { color, weight: 4 }).addTo(map);
+  L.circleMarker(flat[0], { radius: 6, color: "#fff", weight: 2, fillColor: color, fillOpacity: 1 }).addTo(map);
+  L.circleMarker(flat[flat.length - 1], { radius: 6, color, weight: 2, fillColor: "#fff", fillOpacity: 1 }).addTo(map);
   return line;
 }
 
@@ -484,9 +506,13 @@ document.getElementById("map-toggle-home-btn").addEventListener("click", async (
   for (let i = 0; i < selected.length; i++) {
     const activity = selected[i];
     const color = TRACK_COLORS[i % TRACK_COLORS.length];
-    const points = activity._isLocal
-      ? extractPointsFromGpxText(activity._localContent)
-      : await fetchStravaTrackPoints(activity.id);
+    // a trimmed item: its kept parts, each drawn on its own
+    const points = activity._trim && activity._track
+      ? activity._trim.ranges.map(([i, j]) => activity._track.points.slice(i, j + 1).filter(Boolean))
+        .filter(p => p.length > 0)
+      : activity._isLocal
+        ? extractPointsFromGpxText(activity._localContent)
+        : await fetchStravaTrackPoints(activity.id);
     const line = drawTrack(map, points, color);
     if (line) {
       lines.push(line);
@@ -643,6 +669,541 @@ document.getElementById("local-file-input").addEventListener("change", async (e)
 });
 
 // ---------------------------------------------------------------------------
+// Trim screen — keep only part of one activity or file
+// ---------------------------------------------------------------------------
+// Each item of the list can be trimmed on its own, before combining. The
+// pauses found in the track split it into segments, each with a box to
+// tick to keep it (Before / After on each pause tick or untick them all in
+// one go); the two handles, or the ‹ › buttons point by point, then fine-
+// tune the start of the first kept segment and the end of the last one.
+// What's kept is stored on the item (activity._trim: ranges of point
+// indexes) and only applied by the server when combining or sending (see
+// _apply_trim in app.py) — nothing is changed before that, and the
+// original activity or file never is.
+
+// A pause splits the track when the recording stopped for this long, or
+// jumped this far between two points. Same thresholds as find_pauses() in
+// core/gpx_core.py.
+const SEGMENT_MIN_PAUSE_SECONDS = 120;
+const PAUSE_MIN_JUMP_METERS = 200;
+const SNAP_PIXELS = 12; // a dragged handle sticks to a segment edge this close
+
+// "Color each segment": one color per segment, used in turn — saturated
+// enough to stand out on the OSM map, with no green (lost among parks) and
+// no yellow (lost among roads), ordered so that neighbors always contrast.
+const SEGMENT_COLORS = ["#e63946", "#1d4ed8", "#f97316", "#9333ea", "#0891b2", "#db2777", "#334155", "#7c2d12"];
+let colorSegments = false; // kept while the app stays open
+const segmentColor = k => SEGMENT_COLORS[k % SEGMENT_COLORS.length];
+
+const trim = {
+  activity: null, // item being trimmed
+  track: null,    // its points and times (see loadTrackForTrim)
+  cumDist: null,  // distance from the first point to each point, in meters
+  segments: [],   // [{start, end}] point indexes, split at the pauses
+  pauses: [],     // pause k sits between segments k and k + 1
+  checked: [],    // one box per segment
+  start: 0,       // index of the first point kept (handle)
+  end: 0,         // index of the last point kept (handle)
+  layers: null,   // map layers, redrawn as things change
+};
+
+function haversineMeters(a, b) {
+  const rad = x => (x * Math.PI) / 180;
+  const dLat = rad(b[0] - a[0]);
+  const dLon = rad(b[1] - a[1]);
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a[0])) * Math.cos(rad(b[0])) * Math.sin(dLon / 2) ** 2;
+  return 2 * 6371000 * Math.asin(Math.sqrt(h));
+}
+
+// One entry per track point, in file order — the same order and count the
+// server uses (list_trkpts / keep_trkpt_ranges), so indexes chosen here
+// match there. A point without a readable position or time keeps its
+// place (null).
+function parseTrackFromGpxText(gpxText) {
+  const doc = new DOMParser().parseFromString(gpxText, "application/xml");
+  const points = [];
+  const times = [];
+  doc.querySelectorAll("trkpt").forEach((pt) => {
+    const lat = parseFloat(pt.getAttribute("lat"));
+    const lon = parseFloat(pt.getAttribute("lon"));
+    points.push(Number.isNaN(lat) || Number.isNaN(lon) ? null : [lat, lon]);
+    const timeEl = pt.querySelector("time");
+    const ms = timeEl ? Date.parse(timeEl.textContent.trim()) : NaN;
+    times.push(Number.isNaN(ms) ? null : ms);
+  });
+  return { points, times };
+}
+
+// {points: [[lat, lon] or null, ...], times: [ms or null, ...]} for one
+// item, fetched once and kept on it. For a Strava activity the server
+// sends each point's time as seconds from the start.
+async function loadTrackForTrim(activity) {
+  if (activity._track) return activity._track;
+  let track;
+  if (activity._isLocal) {
+    track = parseTrackFromGpxText(activity._localContent);
+  } else {
+    const res = await fetch(`/activities/${activity.id}/track`);
+    if (!res.ok) throw new Error("track not loaded");
+    const data = await res.json();
+    const points = data.points || [];
+    const offsets = data.times || [];
+    const startMs = Date.parse(activity.start_date);
+    track = {
+      points,
+      times: points.map((_, i) =>
+        offsets[i] != null && !Number.isNaN(startMs) ? startMs + offsets[i] * 1000 : null),
+    };
+  }
+  activity._track = track;
+  return track;
+}
+
+// Splits the track at its pauses: two consecutive points far apart in time
+// or on the ground. Returns {segments, pauses}.
+function splitTrackAtPauses(track) {
+  const { points, times } = track;
+  const segments = [];
+  const pauses = [];
+  let segStart = 0;
+  for (let i = 0; i < points.length - 1; i++) {
+    const gap = times[i] != null && times[i + 1] != null ? (times[i + 1] - times[i]) / 1000 : null;
+    const jump = points[i] && points[i + 1] ? haversineMeters(points[i], points[i + 1]) : null;
+    if ((gap != null && gap >= SEGMENT_MIN_PAUSE_SECONDS) || (jump != null && jump >= PAUSE_MIN_JUMP_METERS)) {
+      segments.push({ start: segStart, end: i });
+      pauses.push({ index: i, gap, jump });
+      segStart = i + 1;
+    }
+  }
+  segments.push({ start: segStart, end: points.length - 1 });
+  return { segments, pauses };
+}
+
+// The parts actually kept: each ticked segment, cut to the handles. Two
+// ticked segments next to each other make one part (the pause between
+// them is kept).
+function keptRanges() {
+  const ranges = [];
+  trim.segments.forEach((seg, k) => {
+    if (!trim.checked[k]) return;
+    const a = Math.max(seg.start, trim.start);
+    const b = Math.min(seg.end, trim.end);
+    if (a > b) return;
+    const prev = ranges[ranges.length - 1];
+    if (prev && prev[1] + 1 === a) prev[1] = b;
+    else ranges.push([a, b]);
+  });
+  return ranges;
+}
+
+function formatGap(seconds) {
+  return seconds < 60 ? `${Math.round(seconds)} s` : `${Math.round(seconds / 60)} min`;
+}
+
+function formatPauseLine(p) {
+  const parts = [];
+  if (p.gap != null) parts.push(`${formatGap(p.gap)} pause`);
+  if (p.jump != null && p.jump >= PAUSE_MIN_JUMP_METERS) {
+    parts.push(p.jump < 1000 ? `${Math.round(p.jump)} m jump` : `${(p.jump / 1000).toFixed(1)} km jump`);
+  }
+  return parts.join(" · ") || "Pause";
+}
+
+function showTrimError(msg) {
+  const el = document.getElementById("trim-error");
+  el.textContent = msg;
+  el.classList.remove("hidden");
+}
+
+function setTrimControlsEnabled(enabled) {
+  document.querySelectorAll("#view-trim .trim-nudge, #trim-apply-btn, #trim-reset-btn")
+    .forEach((el) => { el.disabled = !enabled; });
+}
+
+async function openTrimScreen(activity) {
+  clearHomeError();
+  closeHomeMap();
+  trim.activity = activity;
+  trim.track = null;
+  trim.layers = null;
+  document.getElementById("trim-title").textContent = `Trim "${activity.name}"`;
+  document.getElementById("trim-error").classList.add("hidden");
+  document.getElementById("trim-times").textContent = "Loading the track…";
+  document.getElementById("trim-stats").textContent = "";
+  document.getElementById("trim-segments").innerHTML = "";
+  document.getElementById("trim-segments-heading").classList.add("hidden");
+  document.querySelectorAll(".trim-tick").forEach(el => el.remove());
+  document.getElementById("trim-color-row").classList.add("hidden");
+  document.getElementById("trim-color-toggle").checked = colorSegments;
+  setTrimControlsEnabled(false);
+  const hasMap = typeof L !== "undefined";
+  if (hasMap) clearMapLayers(ensureMap("trim-map", "trim"));
+  showView("view-trim");
+  window.scrollTo(0, 0);
+
+  let track;
+  try {
+    track = await loadTrackForTrim(activity);
+  } catch (e) {
+    document.getElementById("trim-times").textContent = "";
+    showTrimError("Couldn't load this track. Try again later.");
+    return;
+  }
+  if (trim.activity !== activity) return; // left the screen meanwhile
+  const n = track.points.length;
+  if (n < 2) {
+    document.getElementById("trim-times").textContent = "";
+    showTrimError("This track has too few points to trim.");
+    return;
+  }
+
+  trim.track = track;
+  trim.cumDist = [0];
+  let lastPt = null;
+  for (let i = 0; i < n; i++) {
+    const pt = track.points[i];
+    if (i > 0) trim.cumDist.push(trim.cumDist[i - 1] + (pt && lastPt ? haversineMeters(lastPt, pt) : 0));
+    if (pt) lastPt = pt;
+  }
+  const { segments, pauses } = splitTrackAtPauses(track);
+  trim.segments = segments;
+  trim.pauses = pauses;
+  const saved = activity._trim;
+  if (saved && saved.checked && saved.checked.length === segments.length) {
+    trim.checked = saved.checked.slice();
+    trim.start = saved.start;
+    trim.end = Math.min(saved.end, n - 1);
+  } else {
+    trim.checked = segments.map(() => true);
+    trim.start = 0;
+    trim.end = n - 1;
+  }
+
+  for (const id of ["trim-start", "trim-end"]) {
+    document.getElementById(id).max = String(n - 1);
+  }
+  renderTrimTicks();
+  setTrimControlsEnabled(true);
+
+  if (hasMap) {
+    const map = ensureMap("trim-map", "trim");
+    const all = track.points.filter(Boolean);
+    const color = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#fc4c02";
+    trim.layers = {
+      // the part left out: grey and dashed, under the part kept
+      removed: L.polyline(all, { color: "#888", weight: 3, opacity: 0.8, dashArray: "4 6" }).addTo(map),
+      kept: L.polyline([], { color, weight: 5 }).addTo(map),
+      colored: L.layerGroup().addTo(map), // used instead of "kept" with colors on
+      startDot: L.circleMarker(all[0], { radius: 7, color: "#fff", weight: 2, fillColor: color, fillOpacity: 1 }).addTo(map),
+      endDot: L.circleMarker(all[all.length - 1], { radius: 7, color, weight: 2, fillColor: "#fff", fillOpacity: 1 }).addTo(map),
+      labels: [],
+    };
+    if (segments.length > 1) {
+      segments.forEach((seg, k) => {
+        const first = track.points.slice(seg.start, seg.end + 1).find(Boolean);
+        if (!first) return;
+        trim.layers.labels.push(L.marker(first, {
+          icon: L.divIcon({ className: "trim-seg-label", html: String(k + 1), iconSize: [20, 20] }),
+          interactive: false,
+        }).addTo(map));
+      });
+    }
+    requestAnimationFrame(() => {
+      map.invalidateSize();
+      map.fitBounds(trim.layers.removed.getBounds().pad(0.1));
+    });
+  }
+
+  renderTrimSegments();
+  updateTrimView();
+}
+
+// Small marks on the slider where the pauses are — where a dragged handle
+// sticks.
+function renderTrimTicks() {
+  const slider = document.querySelector(".trim-slider");
+  slider.querySelectorAll(".trim-tick").forEach(el => el.remove());
+  const n = trim.track.points.length;
+  for (const p of trim.pauses) {
+    const tick = document.createElement("div");
+    tick.className = "trim-tick";
+    tick.style.left = `calc(13px + (100% - 26px) * ${(p.index + 0.5) / (n - 1)})`;
+    slider.appendChild(tick);
+  }
+}
+
+function renderTrimSegments() {
+  const list = document.getElementById("trim-segments");
+  const heading = document.getElementById("trim-segments-heading");
+  const { track, segments, pauses } = trim;
+  list.innerHTML = "";
+  heading.classList.remove("hidden");
+  if (segments.length === 1) {
+    heading.textContent = `No pause of ${formatGap(SEGMENT_MIN_PAUSE_SECONDS)} or more in this track`;
+    return;
+  }
+  heading.textContent = `Segments (split at pauses of ${formatGap(SEGMENT_MIN_PAUSE_SECONDS)} or more)`;
+  document.getElementById("trim-color-row").classList.remove("hidden");
+  segments.forEach((seg, k) => {
+    const li = document.createElement("li");
+    li.className = "trim-seg";
+    const dist = formatDistance(trim.cumDist[seg.end] - trim.cumDist[seg.start]);
+    li.innerHTML = `
+      <label>
+        <input type="checkbox" data-seg="${k}" ${trim.checked[k] ? "checked" : ""}>
+        <span class="trim-seg-num">${k + 1}</span>
+        <span>${formatClock(track.times[seg.start], false)} → ${formatClock(track.times[seg.end], false)} · ${dist}</span>
+      </label>
+    `;
+    list.appendChild(li);
+    if (k < pauses.length) {
+      const pli = document.createElement("li");
+      pli.className = "trim-pause";
+      pli.innerHTML = `
+        <span class="trim-pause-info">${escapeHtml(formatPauseLine(pauses[k]))}</span>
+        <button type="button" class="btn btn-small" data-keep="before" data-pause="${k}">Before</button>
+        <button type="button" class="btn btn-small" data-keep="after" data-pause="${k}">After</button>
+      `;
+      list.appendChild(pli);
+    }
+  });
+}
+
+// After ticking or unticking segments, the handles go back to the edges of
+// the first and last ticked segments.
+function fitHandlesToCheckedSegments() {
+  const ks = trim.checked.map((c, k) => (c ? k : -1)).filter(k => k >= 0);
+  if (ks.length === 0) return;
+  trim.start = trim.segments[ks[0]].start;
+  trim.end = trim.segments[ks[ks.length - 1]].end;
+  if (trim.end - trim.start < 1) {
+    // a single one-point segment: widen to a valid range for the handles
+    if (trim.end < trim.track.points.length - 1) trim.end += 1;
+    else trim.start -= 1;
+  }
+}
+
+function updateTrimView() {
+  const { track, start, end } = trim;
+  if (!track) return;
+  const n = track.points.length;
+  const startInput = document.getElementById("trim-start");
+  const endInput = document.getElementById("trim-end");
+  startInput.value = String(start);
+  endInput.value = String(end);
+  // When the two handles meet, the one that can still move goes on top.
+  startInput.style.zIndex = start > (n - 1) / 2 ? "3" : "2";
+  endInput.style.zIndex = start > (n - 1) / 2 ? "2" : "3";
+
+  const fill = document.getElementById("trim-slider-fill");
+  const a = start / (n - 1);
+  const b = end / (n - 1);
+  fill.style.left = `calc(13px + (100% - 26px) * ${a})`;
+  fill.style.width = `calc((100% - 26px) * ${b - a})`;
+
+  document.querySelectorAll("#trim-segments input[data-seg]").forEach((cb) => {
+    cb.checked = trim.checked[Number(cb.dataset.seg)];
+  });
+
+  const ranges = keptRanges();
+  const kept = ranges.reduce((s, [i, j]) => s + j - i + 1, 0);
+  const applyBtn = document.getElementById("trim-apply-btn");
+  applyBtn.disabled = kept < 2;
+  if (kept < 2) {
+    document.getElementById("trim-times").textContent = "Nothing kept";
+    document.getElementById("trim-stats").textContent = "Tick at least one segment.";
+  } else {
+    const first = ranges[0][0];
+    const last = ranges[ranges.length - 1][1];
+    document.getElementById("trim-times").textContent =
+      `${formatClock(track.times[first])} → ${formatClock(track.times[last])}`;
+    let dist = 0;
+    let ms = 0;
+    let timed = true;
+    for (const [i, j] of ranges) {
+      dist += trim.cumDist[j] - trim.cumDist[i];
+      if (track.times[i] != null && track.times[j] != null) ms += track.times[j] - track.times[i];
+      else timed = false;
+    }
+    const whole = ranges.length === 1 && first === 0 && last === n - 1;
+    const stats = [formatDistance(dist)];
+    if (timed) stats.push(formatDuration(ms / 1000));
+    if (ranges.length > 1) stats.push(`${ranges.length} parts`);
+    document.getElementById("trim-stats").textContent =
+      stats.join(" · ") + (whole ? " · whole track" : " kept");
+  }
+
+  if (trim.layers) {
+    const parts = ranges.map(([i, j]) => track.points.slice(i, j + 1).filter(Boolean)).filter(p => p.length > 0);
+    trim.layers.kept.setLatLngs(colorSegments ? [] : parts);
+    trim.layers.colored.clearLayers();
+    if (colorSegments) {
+      // each kept segment (cut to the handles) in its own color
+      trim.segments.forEach((seg, k) => {
+        if (!trim.checked[k]) return;
+        const a = Math.max(seg.start, start);
+        const b = Math.min(seg.end, end);
+        const pts = a <= b ? track.points.slice(a, b + 1).filter(Boolean) : [];
+        if (pts.length > 0) L.polyline(pts, { color: segmentColor(k), weight: 5 }).addTo(trim.layers.colored);
+      });
+    }
+    if (parts.length > 0) {
+      trim.layers.startDot.setLatLng(parts[0][0]);
+      const lastPart = parts[parts.length - 1];
+      trim.layers.endDot.setLatLng(lastPart[lastPart.length - 1]);
+    }
+    trim.layers.labels.forEach((m, k) => {
+      const el = m.getElement();
+      if (!el) return;
+      el.classList.toggle("trim-seg-label-off", !trim.checked[k]);
+      el.style.background = trim.checked[k] && colorSegments ? segmentColor(k) : "";
+    });
+  }
+  document.querySelectorAll("#trim-segments .trim-seg-num").forEach((el, k) => {
+    el.style.background = colorSegments ? segmentColor(k) : "";
+  });
+}
+
+// A dragged handle sticks to the nearest segment edge when it comes within
+// a few pixels of it: a start handle to where a segment starts, an end
+// handle to where one ends.
+function snapToSegmentEdge(value, edges) {
+  const n = trim.track.points.length;
+  const width = document.querySelector(".trim-slider").clientWidth - 26;
+  const pxPerPoint = width / (n - 1);
+  let best = value;
+  let bestPx = SNAP_PIXELS + 1;
+  for (const edge of edges) {
+    const px = Math.abs(edge - value) * pxPerPoint;
+    if (px < bestPx) { best = edge; bestPx = px; }
+  }
+  return bestPx <= SNAP_PIXELS ? best : value;
+}
+
+document.getElementById("trim-start").addEventListener("input", (e) => {
+  if (!trim.track) return;
+  const v = snapToSegmentEdge(Number(e.target.value), trim.segments.map(s => s.start));
+  trim.start = Math.min(v, trim.end - 1);
+  updateTrimView();
+});
+
+document.getElementById("trim-end").addEventListener("input", (e) => {
+  if (!trim.track) return;
+  const v = snapToSegmentEdge(Number(e.target.value), trim.segments.map(s => s.end));
+  trim.end = Math.max(v, trim.start + 1);
+  updateTrimView();
+});
+
+// ‹ › buttons: one point per tap — no sticking, so a handle can always move
+// off a segment edge. Held down, they repeat, faster and faster.
+function nudgeHandle(which, delta) {
+  if (!trim.track) return;
+  const last = trim.track.points.length - 1;
+  if (which === "start") {
+    trim.start = Math.max(0, Math.min(trim.start + delta, trim.end - 1));
+  } else {
+    trim.end = Math.min(last, Math.max(trim.end + delta, trim.start + 1));
+  }
+  updateTrimView();
+}
+
+document.querySelectorAll(".trim-nudge").forEach((btn) => {
+  const which = btn.dataset.handle;
+  const dir = Number(btn.dataset.dir);
+  let timer = null;
+  let repeats = 0;
+  const stop = () => { clearTimeout(timer); timer = null; };
+  const tick = () => {
+    repeats += 1;
+    nudgeHandle(which, dir * (repeats < 15 ? 1 : repeats < 40 ? 5 : 20));
+    timer = setTimeout(tick, 70);
+  };
+  btn.addEventListener("pointerdown", (e) => {
+    if (btn.disabled) return;
+    e.preventDefault();
+    stop();
+    repeats = 0;
+    nudgeHandle(which, dir);
+    timer = setTimeout(tick, 400);
+  });
+  for (const ev of ["pointerup", "pointerleave", "pointercancel"]) btn.addEventListener(ev, stop);
+  btn.addEventListener("contextmenu", (e) => e.preventDefault());
+  // Keyboard (Enter / Space): one step per press.
+  btn.addEventListener("click", (e) => { if (e.detail === 0) nudgeHandle(which, dir); });
+});
+
+document.getElementById("trim-segments").addEventListener("change", (e) => {
+  const cb = e.target.closest("input[data-seg]");
+  if (!cb || !trim.track) return;
+  trim.checked[Number(cb.dataset.seg)] = cb.checked;
+  fitHandlesToCheckedSegments();
+  updateTrimView();
+});
+
+document.getElementById("trim-segments").addEventListener("click", (e) => {
+  const btn = e.target.closest("button[data-keep]");
+  if (!btn || !trim.track) return;
+  const k = Number(btn.dataset.pause);
+  const before = btn.dataset.keep === "before";
+  trim.checked = trim.segments.map((_, i) => (before ? i <= k : i > k));
+  fitHandlesToCheckedSegments();
+  updateTrimView();
+});
+
+document.getElementById("trim-color-toggle").addEventListener("change", (e) => {
+  colorSegments = e.target.checked;
+  updateTrimView();
+});
+
+document.getElementById("trim-reset-btn").addEventListener("click", () => {
+  if (!trim.track) return;
+  trim.checked = trim.segments.map(() => true);
+  trim.start = 0;
+  trim.end = trim.track.points.length - 1;
+  updateTrimView();
+});
+
+function leaveTrimScreen() {
+  trim.activity = null;
+  trim.track = null;
+  trim.layers = null;
+  showView("view-home");
+}
+
+document.getElementById("trim-cancel-btn").addEventListener("click", leaveTrimScreen);
+
+document.getElementById("trim-apply-btn").addEventListener("click", () => {
+  const { activity, track } = trim;
+  if (!activity || !track) return;
+  const ranges = keptRanges();
+  const n = track.points.length;
+  const whole = ranges.length === 1 && ranges[0][0] === 0 && ranges[0][1] === n - 1;
+  activity._trim = whole ? null : {
+    ranges,
+    // to reopen the screen as it was left
+    checked: trim.checked.slice(),
+    start: trim.start,
+    end: trim.end,
+    // for the line shown in the list
+    startTime: track.times[ranges[0][0]],
+    endTime: track.times[ranges[ranges.length - 1][1]],
+  };
+  leaveTrimScreen();
+  renderActivityList();
+  // Trimming an item means it's going to be used: tick it.
+  const box = document.querySelector(`#activity-list input[data-id="${CSS.escape(String(activity.id))}"]`);
+  if (box) box.checked = true;
+  updateCombineButtonState();
+});
+
+document.getElementById("activity-list").addEventListener("click", (e) => {
+  const btn = e.target.closest(".trim-btn");
+  if (!btn) return;
+  const activity = state.activities.find(a => String(a.id) === btn.dataset.trimId);
+  if (activity) openTrimScreen(activity);
+});
+
+// ---------------------------------------------------------------------------
 // Combine
 // ---------------------------------------------------------------------------
 
@@ -665,10 +1226,16 @@ document.getElementById("combine-btn").addEventListener("click", async () => {
   try {
     // Strava activities and local files can be mixed: each kind goes in
     // its own list, the server puts everything in chronological order.
+    // A trimmed item carries the part to keep (see the trim screen); the
+    // track data cached for that screen stays on the phone.
+    const trimOf = a => (a._trim ? { ranges: a._trim.ranges } : null);
     const body = {
-      activities: selected.filter(a => !a._isLocal),
+      activities: selected.filter(a => !a._isLocal).map((a) => {
+        const { _track, _trim, ...activity } = a;
+        return { ...activity, trim: trimOf(a) };
+      }),
       local_files: selected.filter(a => a._isLocal)
-        .map(a => ({ name: a.name, content: a._localContent })),
+        .map(a => ({ name: a.name, content: a._localContent, trim: trimOf(a) })),
       include: getIncludeSettings(),
     };
 
