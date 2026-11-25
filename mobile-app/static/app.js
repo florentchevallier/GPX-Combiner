@@ -218,6 +218,7 @@ function enterGuestHome() {
   document.getElementById("user-label").textContent =
     "Local mode — no Strava account connected.";
   document.getElementById("activity-list-heading").textContent = "Files to combine";
+  document.getElementById("day-btn").classList.add("hidden");
   document.getElementById("load-more-btn").classList.add("hidden");
   document.getElementById("activities-max-hint").classList.add("hidden");
   document.getElementById("logout-link").classList.add("hidden");
@@ -267,7 +268,10 @@ function setupInstallHint() {
   instructions.classList.remove("hidden");
 }
 
-// Strava activities and local GPX files share one list, newest first.
+// All items live in one list (state.activities), newest first, each tagged
+// with the section it is shown in (activity._section): "recent" (the latest
+// Strava activities), "day:YYYY-MM-DD" (a day picked with 📅) or "local"
+// (GPX files from the phone). Ticked items can be combined across sections.
 // Compared as real dates: Strava's and local files' times aren't always
 // written in the same format.
 function sortActivitiesNewestFirst() {
@@ -275,10 +279,10 @@ function sortActivitiesNewestFirst() {
   state.activities.sort((a, b) => t(b) - t(a));
 }
 
-// The activities cap (10, or 20 in Pro mode) counts Strava activities
-// only — local files added to the list don't use it up.
+// The activities cap (10, or 20 in Pro mode) counts the recent activities
+// only — local files and days picked with 📅 don't use it up.
 function stravaActivityCount() {
-  return state.activities.filter(a => !a._isLocal).length;
+  return state.activities.filter(a => a._section === "recent").length;
 }
 
 async function loadActivities() {
@@ -288,7 +292,13 @@ async function loadActivities() {
     return;
   }
   const newActivities = await res.json();
-  state.activities.push(...newActivities);
+  // An activity already shown (in a day picked with 📅) stays where it is.
+  const shown = new Set(state.activities.map(a => String(a.id)));
+  for (const a of newActivities) {
+    if (shown.has(String(a.id))) continue;
+    a._section = "recent";
+    state.activities.push(a);
+  }
   sortActivitiesNewestFirst();
   renderActivityList();
 
@@ -312,43 +322,94 @@ async function loadActivities() {
   }
 }
 
+function activityItem(activity, isChecked) {
+  const li = document.createElement("li");
+  li.className = "activity-item";
+  const metaLine = activity._isLocal
+    ? `Local GPX file · ${formatDate(activity.start_date_local)}`
+    : `${escapeHtml(activity.type)} · ${formatDate(activity.start_date_local)} · ` +
+      `${formatDuration(activity.moving_time)} · ${formatDistance(activity.distance)}`;
+  const id = String(activity.id);
+  const t = activity._trim;
+  const trimLine = t
+    ? `<div class="activity-trim">✂️ Trimmed: ${formatClock(t.startTime, false)} → ${formatClock(t.endTime, false)}` +
+      `${t.ranges.length > 1 ? ` · ${t.ranges.length} parts` : ""}</div>`
+    : "";
+  li.innerHTML = `
+    <input type="checkbox" data-id="${escapeHtml(id)}" ${isChecked ? "checked" : ""}>
+    <div class="activity-info">
+      <div class="activity-name">${escapeHtml(activity.name)}</div>
+      <div class="activity-meta">${metaLine}</div>
+      ${trimLine}
+    </div>
+    <button type="button" class="trim-btn" data-trim-id="${escapeHtml(id)}"
+            title="Trim" aria-label="Trim ${escapeHtml(activity.name)}">✂️</button>
+  `;
+  return li;
+}
+
+// "2026-11-12" -> "12 Nov 2026" (read as a calendar day, not a UTC instant,
+// so it never shows the day before in a western time zone).
+function formatDay(day) {
+  const [y, m, d] = day.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+}
+
+// A titled list under the recent activities, with a ✕ to remove it.
+function listSection(key, title) {
+  const section = document.createElement("section");
+  section.className = "list-section";
+  section.dataset.section = key;
+  section.innerHTML = `
+    <div class="list-section-header">
+      <h2>${escapeHtml(title)}</h2>
+      <button type="button" class="section-remove" data-section="${escapeHtml(key)}"
+              title="Remove from the list" aria-label="Remove ${escapeHtml(title)} from the list">✕</button>
+    </div>
+    <ul class="activity-list"></ul>
+  `;
+  return section;
+}
+
 function renderActivityList() {
-  const list = document.getElementById("activity-list");
-  // The whole list is redrawn each time (more activities loaded, local
-  // files added), so remember what was ticked to tick it again.
-  const boxes = Array.from(list.querySelectorAll("input[type=checkbox]"));
+  const home = document.getElementById("view-home");
+  const recentList = document.getElementById("activity-list");
+  const extra = document.getElementById("extra-sections");
+  // The lists are redrawn each time (more activities loaded, files or a day
+  // added), so remember what was ticked to tick it again.
+  const boxes = Array.from(home.querySelectorAll(".activity-list input[type=checkbox]"));
   const known = new Set(boxes.map(cb => cb.dataset.id));
   const wasChecked = new Set(boxes.filter(cb => cb.checked).map(cb => cb.dataset.id));
-  list.innerHTML = "";
-  for (const activity of state.activities) {
-    const li = document.createElement("li");
-    li.className = "activity-item";
-    const metaLine = activity._isLocal
-      ? `Local GPX file · ${formatDate(activity.start_date_local)}`
-      : `${escapeHtml(activity.type)} · ${formatDate(activity.start_date_local)} · ` +
-        `${formatDuration(activity.moving_time)} · ${formatDistance(activity.distance)}`;
-    // Local files are checked by default when they first appear (the user
-    // just picked them deliberately from their phone) — Strava activities
-    // stay opt-in.
-    const id = String(activity.id);
-    const isChecked = wasChecked.has(id) || (activity._isLocal && !known.has(id));
-    const checkedAttr = isChecked ? "checked" : "";
-    const t = activity._trim;
-    const trimLine = t
-      ? `<div class="activity-trim">✂️ Trimmed: ${formatClock(t.startTime, false)} → ${formatClock(t.endTime, false)}` +
-        `${t.ranges.length > 1 ? ` · ${t.ranges.length} parts` : ""}</div>`
-      : "";
-    li.innerHTML = `
-      <input type="checkbox" data-id="${escapeHtml(id)}" ${checkedAttr}>
-      <div class="activity-info">
-        <div class="activity-name">${escapeHtml(activity.name)}</div>
-        <div class="activity-meta">${metaLine}</div>
-        ${trimLine}
-      </div>
-      <button type="button" class="trim-btn" data-trim-id="${escapeHtml(id)}"
-              title="Trim" aria-label="Trim ${escapeHtml(activity.name)}">✂️</button>
-    `;
-    list.appendChild(li);
+  // Local files are checked by default when they first appear (the user
+  // just picked them deliberately from their phone) — Strava activities
+  // stay opt-in.
+  const item = (a) => {
+    const id = String(a.id);
+    return activityItem(a, wasChecked.has(id) || (a._isLocal && !known.has(id)));
+  };
+  recentList.innerHTML = "";
+  extra.innerHTML = "";
+
+  if (state.guestMode) {
+    // no Strava at all: the files are the whole list, no sections
+    state.activities.forEach(a => recentList.appendChild(item(a)));
+  } else {
+    state.activities.filter(a => a._section === "recent").forEach(a => recentList.appendChild(item(a)));
+    const days = [...new Set(state.activities.map(a => a._section).filter(s => s && s.startsWith("day:")))]
+      .sort().reverse();
+    for (const key of days) {
+      const section = listSection(key, formatDay(key.slice(4)));
+      const ul = section.querySelector("ul");
+      state.activities.filter(a => a._section === key).forEach(a => ul.appendChild(item(a)));
+      extra.appendChild(section);
+    }
+    const locals = state.activities.filter(a => a._section === "local");
+    if (locals.length > 0) {
+      const section = listSection("local", "Local GPX files");
+      const ul = section.querySelector("ul");
+      locals.forEach(a => ul.appendChild(item(a)));
+      extra.appendChild(section);
+    }
   }
   updateCombineButtonState();
 }
@@ -357,7 +418,7 @@ function getSelectedActivities() {
   // Compared as strings: Strava activity ids are numbers, local-file ids
   // are strings like "local-3" — String(a.id) makes both sides match.
   const checked = new Set(
-    Array.from(document.querySelectorAll("#activity-list input[type=checkbox]:checked"))
+    Array.from(document.querySelectorAll("#view-home .activity-list input[type=checkbox]:checked"))
       .map(cb => cb.dataset.id)
   );
   return state.activities.filter(a => checked.has(String(a.id)));
@@ -586,9 +647,10 @@ function getIncludeSettings() {
 }
 
 // ---------------------------------------------------------------------------
-// Local GPX file import — with a Strava session, the files are added to
-// the list of Strava activities and can be combined with them. In guest
-// mode (no Strava at all) they are the whole list, replaced on each import.
+// Local GPX file import — with a Strava session, the files are added in a
+// "Local GPX files" section of their own and can be combined with the
+// Strava activities. In guest mode (no Strava at all) they are the whole
+// list, replaced on each import.
 // ---------------------------------------------------------------------------
 
 // Reads the file name and start date out of a GPX file, the same way the
@@ -652,6 +714,7 @@ document.getElementById("local-file-input").addEventListener("change", async (e)
       distance: null,
       moving_time: null,
       _isLocal: true,
+      _section: "local",
       _localContent: text,
       _gpxType: meta.gpxType,
     });
@@ -1191,16 +1254,112 @@ document.getElementById("trim-apply-btn").addEventListener("click", () => {
   leaveTrimScreen();
   renderActivityList();
   // Trimming an item means it's going to be used: tick it.
-  const box = document.querySelector(`#activity-list input[data-id="${CSS.escape(String(activity.id))}"]`);
+  const box = document.querySelector(`#view-home .activity-list input[data-id="${CSS.escape(String(activity.id))}"]`);
   if (box) box.checked = true;
   updateCombineButtonState();
 });
 
-document.getElementById("activity-list").addEventListener("click", (e) => {
-  const btn = e.target.closest(".trim-btn");
+document.getElementById("view-home").addEventListener("click", (e) => {
+  const btn = e.target.closest(".activity-list .trim-btn");
   if (!btn) return;
   const activity = state.activities.find(a => String(a.id) === btn.dataset.trimId);
   if (activity) openTrimScreen(activity);
+});
+
+// ---------------------------------------------------------------------------
+// One day's activities — 📅 next to Pro mode
+// ---------------------------------------------------------------------------
+// Picks a day in the phone's own calendar and adds that day's Strava
+// activities in a section of their own — to reach an activity older than
+// the recent ones, and combine it with anything else in the list.
+
+function todayIso() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function showDayNotice(msg) {
+  const el = document.getElementById("day-notice");
+  el.textContent = msg;
+  el.classList.toggle("hidden", !msg);
+}
+
+document.getElementById("day-btn").addEventListener("click", () => {
+  const input = document.getElementById("day-input");
+  input.max = todayIso(); // no future days
+  showDayNotice("");
+  try {
+    input.showPicker();
+  } catch (e) {
+    // older browsers: focusing the field opens their own picker
+    input.focus();
+    input.click();
+  }
+});
+
+document.getElementById("day-input").addEventListener("change", (e) => {
+  const day = e.target.value; // "YYYY-MM-DD", empty if cleared
+  e.target.value = "";        // so picking the same day again still fires
+  if (day) loadDay(day);
+});
+
+async function loadDay(day) {
+  const key = `day:${day}`;
+  const existing = document.querySelector(`#extra-sections [data-section="${key}"]`);
+  if (existing) {
+    existing.scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
+  // Strava filters on the moment an activity started, but "that day"
+  // means the day where it happened, in its own time zone — the same day
+  // Strava shows. So ask for a wider window (time zones run from -12 h to
+  // +14 h) and keep the activities whose local date is the day picked.
+  const [y, m, d] = day.split("-").map(Number);
+  const midnight = Date.UTC(y, m - 1, d) / 1000;
+  const after = midnight - 14 * 3600;
+  const before = midnight + 24 * 3600 + 12 * 3600;
+
+  const btn = document.getElementById("day-btn");
+  btn.disabled = true;
+  showDayNotice(`Loading the activities of ${formatDay(day)}…`);
+  try {
+    const res = await fetch(`/activities?after=${after}&before=${before}&per_page=50`);
+    if (!res.ok) throw new Error("not loaded");
+    const all = await res.json();
+    const ofThatDay = all.filter(a => (a.start_date_local || "").slice(0, 10) === day);
+    const shown = new Set(state.activities.map(a => String(a.id)));
+    const added = ofThatDay.filter(a => !shown.has(String(a.id)));
+    if (ofThatDay.length === 0) {
+      showDayNotice(`No Strava activity on ${formatDay(day)}.`);
+      return;
+    }
+    if (added.length === 0) {
+      showDayNotice(`The activities of ${formatDay(day)} are already in the list.`);
+      return;
+    }
+    added.forEach((a) => { a._section = key; });
+    state.activities.push(...added);
+    sortActivitiesNewestFirst();
+    renderActivityList();
+    closeHomeMap();
+    showDayNotice("");
+    document.querySelector(`#extra-sections [data-section="${key}"]`)
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  } catch (e) {
+    showDayNotice("Couldn't load the activities of that day. Try again later.");
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ✕ on a section: takes its items out of the list (with their trims).
+document.getElementById("extra-sections").addEventListener("click", (e) => {
+  const btn = e.target.closest(".section-remove");
+  if (!btn) return;
+  const key = btn.dataset.section;
+  state.activities = state.activities.filter(a => a._section !== key);
+  renderActivityList();
+  closeHomeMap();
 });
 
 // ---------------------------------------------------------------------------
@@ -1212,7 +1371,9 @@ document.getElementById("load-more-btn").addEventListener("click", async () => {
   await loadActivities();
 });
 
-document.getElementById("activity-list").addEventListener("change", updateCombineButtonState);
+document.getElementById("view-home").addEventListener("change", (e) => {
+  if (e.target.closest(".activity-list")) updateCombineButtonState();
+});
 
 document.getElementById("combine-btn").addEventListener("click", async () => {
   clearHomeError();
@@ -1361,6 +1522,7 @@ document.getElementById("back-to-home-btn").addEventListener("click", () => {
     state.mode = "strava";
     state.lastUploadSucceeded = false;
     closeHomeMap();
+    showDayNotice("");
     document.getElementById("load-more-btn").classList.remove("hidden");
       showView("view-home");
     loadActivities();

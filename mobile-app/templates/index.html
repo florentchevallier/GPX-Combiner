@@ -69,10 +69,16 @@
 
       <div class="page-intro">
         <div id="user-label"></div>
-        <label class="pro-toggle">
-          <input type="checkbox" id="pro-mode-toggle">
-          Pro mode (choose which data to keep: HR, cadence, power, temperature)
-        </label>
+        <div class="intro-row">
+          <label class="pro-toggle">
+            <input type="checkbox" id="pro-mode-toggle">
+            Pro mode (choose which data to keep: HR, cadence, power, temperature)
+          </label>
+          <button id="day-btn" class="icon-btn" type="button" title="Load the activities of a day"
+                  aria-label="Load the activities of a day">📅</button>
+          <input type="date" id="day-input" class="day-input" tabindex="-1" aria-hidden="true">
+        </div>
+        <p id="day-notice" class="hint hidden"></p>
       </div>
 
       <div id="pro-mode-panel" class="pro-panel hidden">
@@ -91,12 +97,13 @@
         <button id="load-local-btn" class="btn btn-secondary">Load local GPX</button>
       </div>
       <div id="home-map" class="map-preview hidden"></div>
+      <div id="extra-sections"></div>
       <input type="file" id="local-file-input" accept=".gpx" multiple class="hidden">
 
       <p id="activities-max-hint" class="hint hidden">
-        Looking for older activities? Use the
-        <a href="https://github.com/florentchevallier/GPX-Combiner" target="_blank" rel="noopener">desktop app</a>
-        to pick from further back.
+        Looking for older activities? Pick their day with 📅 at the top, or
+        use the <a href="https://github.com/florentchevallier/GPX-Combiner" target="_blank" rel="noopener">desktop app</a>
+        to browse further back.
       </p>
 
       <p id="home-error" class="error hidden"></p>

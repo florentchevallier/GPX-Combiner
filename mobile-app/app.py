@@ -67,7 +67,7 @@ OAUTH_REDIRECT_URI = f"{APP_BASE_URL}/oauth/callback"
 # a discreet build counter in the footer, incremented by one on every file
 # handed over, so it's obvious at a glance whether the phone is actually
 # running the latest deploy or an older cached one.
-BUILD_ID = "34"
+BUILD_ID = "35"
 
 app = Flask(__name__)
 app.secret_key = os.environ["FLASK_SECRET_KEY"]
@@ -282,14 +282,18 @@ def handle_strava_api_error(e):
 
 @app.route("/activities", methods=["GET"])
 def list_activities():
-    """Lists the connected user's most recent Strava activities. Each
-    activity includes `strava_url`, so the frontend can offer a direct
-    link for manual deletion on Strava."""
+    """Lists the connected user's most recent Strava activities — or, with
+    `after` and/or `before` (Unix timestamps, in seconds), those that
+    started in that window (used to load one chosen day). Each activity
+    includes `strava_url`, so the frontend can offer a direct link for
+    manual deletion on Strava."""
     athlete_id, user = _require_login()
     per_page = int(request.args.get("per_page", 25))
     page = int(request.args.get("page", 1))
+    after = request.args.get("after", type=int)
+    before = request.args.get("before", type=int)
     with _ClientSession(athlete_id, user) as client:
-        activities = client.list_activities(page=page, per_page=per_page)
+        activities = client.list_activities(page=page, per_page=per_page, before=before, after=after)
 
     for a in activities:
         a["strava_url"] = f"https://www.strava.com/activities/{a['id']}"

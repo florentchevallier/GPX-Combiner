@@ -146,10 +146,49 @@ h2 { font-size: 1.1rem; margin: 20px 0 10px; }
 
 #user-label { font-weight: 600; margin-bottom: 4px; }
 
+.intro-row { position: relative; display: flex; align-items: center; gap: 10px; }
 .pro-toggle {
   display: block;
+  flex: 1;
   font-size: 0.9rem;
   color: var(--muted);
+}
+/* Square icon button (📅), same look as the ✂️ buttons of the list. */
+.icon-btn {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-alt);
+  font-size: 1.1rem;
+  cursor: pointer;
+}
+.icon-btn:disabled { opacity: 0.5; cursor: default; }
+/* The date field itself stays invisible: the 📅 button opens the phone's
+   own calendar on it. Kept under the button so the calendar pops up there. */
+.day-input {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 40px;
+  height: 40px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.list-section-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.list-section-header h2 { margin: 20px 0 10px; }
+.section-remove {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-alt);
+  color: var(--muted);
+  font-size: 0.9rem;
+  cursor: pointer;
 }
 .pro-panel {
   display: grid;
