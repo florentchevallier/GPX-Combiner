@@ -21,8 +21,10 @@ Expected environment variables:
     APP_BASE_URL           (e.g. https://gpx-combiner-mobile.onrender.com)
 """
 
+import hmac
 import io
 import os
+import secrets
 import tempfile
 import time
 import urllib.parse
@@ -67,7 +69,7 @@ OAUTH_REDIRECT_URI = f"{APP_BASE_URL}/oauth/callback"
 # a discreet build counter in the footer, incremented by one on every file
 # handed over, so it's obvious at a glance whether the phone is actually
 # running the latest deploy or an older cached one.
-BUILD_ID = "37"
+BUILD_ID = "38"
 
 app = Flask(__name__)
 app.secret_key = os.environ["FLASK_SECRET_KEY"]
@@ -77,6 +79,20 @@ app.secret_key = os.environ["FLASK_SECRET_KEY"]
 # reconnect to Strava every time they open the app. session.permanent is
 # set to True at login time (see oauth_callback).
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
+
+# Session cookie only ever sent over HTTPS when the app is served over HTTPS
+# (Render), but still usable on http://localhost for local testing. Lax:
+# not sent with requests made from other sites, but still sent when Strava
+# redirects back to /oauth/callback (a top-level navigation).
+app.config["SESSION_COOKIE_SECURE"] = APP_BASE_URL.startswith("https://")
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+
+# Largest request accepted (local GPX files are sent as their full text to
+# /combine, which works without a Strava account): keeps a single huge
+# request from exhausting the server's memory. Generous for real tracks,
+# which rarely exceed a few MB each.
+MAX_REQUEST_MB = 30
+app.config["MAX_CONTENT_LENGTH"] = MAX_REQUEST_MB * 1024 * 1024
 
 init_db()
 
@@ -120,11 +136,18 @@ def login():
     """Redirects to Strava's authorization page. Each friend authorizes
     with their own account — a single Strava app (your Client ID) is
     shared by everyone, which Strava natively allows."""
+    # A random `state`, kept in this browser's session and checked when
+    # Strava sends the user back (see oauth_callback): proves the callback
+    # answers a login started here, so nobody can slip their own Strava
+    # account into someone else's browser via a crafted callback link.
+    state = secrets.token_urlsafe(16)
+    session["oauth_state"] = state
     params = {
         "client_id": STRAVA_CLIENT_ID,
         "redirect_uri": OAUTH_REDIRECT_URI,
         "response_type": "code",
         "scope": "activity:read_all,activity:write",
+        "state": state,
     }
     return redirect(f"{StravaClient.AUTHORIZE_URL}?{urllib.parse.urlencode(params)}")
 
@@ -164,6 +187,17 @@ def oauth_callback():
             return redirect("/app/")
         return _oauth_error_page(
             "Authorization was cancelled or denied on Strava's side."
+        )
+
+    # Must match the state stored by /login in this browser, and is used
+    # only once. A duplicate of a callback that already logged the user in
+    # (see above) finds no state left: harmless, same as below.
+    expected_state = session.pop("oauth_state", None)
+    if not expected_state or not hmac.compare_digest(expected_state, request.args.get("state", "")):
+        if session.get("athlete_id"):
+            return redirect("/app/")
+        return _oauth_error_page(
+            "This connection link has expired or didn't start here — just try connecting again."
         )
 
     config = {"client_id": STRAVA_CLIENT_ID, "client_secret": STRAVA_CLIENT_SECRET}
@@ -306,6 +340,11 @@ def _require_login():
 @app.errorhandler(PermissionError)
 def handle_permission_error(e):
     return jsonify({"error": str(e)}), 401
+
+
+@app.errorhandler(413)
+def handle_too_large(e):
+    return jsonify({"error": f"Too much data at once (over {MAX_REQUEST_MB} MB). Try with fewer or smaller files."}), 413
 
 
 @app.errorhandler(StravaAPIError)
