@@ -4,6 +4,10 @@ This summarizes what changed in each version, for both the desktop app (`gpx_com
 
 ## Desktop app
 
+### 3.9
+- A single GPX file can now be saved or uploaded on its own (previously at least two files were needed): it gets the same treatment as a combined file — HR/Cadence/Power/Temp choices, the one-second nudge that avoids Strava's duplicate detection, name and signature — e.g. to send a local GPX to Strava, or a copy of an existing activity
+- Uploads to Strava are now sent gzip-compressed (Strava's `gpx.gz` format): lighter and faster, and very long tracks stay under Strava's 25 MB file size limit. Saved files are unchanged (plain GPX)
+
 ### 3.8.1
 - The one-second nudge that avoids Strava's duplicate detection now targets the track's first point itself. Previously it changed the first `<time>` found in the file, which in files that carry a `<metadata>` time (Strava's own exports, most device files) is not the first point
 

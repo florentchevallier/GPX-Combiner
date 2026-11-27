@@ -10,7 +10,7 @@
 
 <p align="center">
   <img alt="platform" src="https://img.shields.io/badge/platform-web%20(mobile)%20%7C%20macOS%20%7C%20Windows%20%7C%20Linux-informational">
-  <img alt="desktop version" src="https://img.shields.io/badge/desktop-3.8.1-orange">
+  <img alt="desktop version" src="https://img.shields.io/badge/desktop-3.9-orange">
   <img alt="license" src="https://img.shields.io/badge/license-GPL--3.0--or--later-blue">
 </p>
 
@@ -95,7 +95,7 @@ Prebuilt, ready-to-run apps are published on the [**Releases**](https://github.c
 
 ### What it does
 
-- **Combine multiple GPX files** into one, in chronological order — handy for splitting a long ride/run into segments on your GPS device and merging them back into a single activity afterwards.
+- **Combine multiple GPX files** into one, in chronological order — handy for splitting a long ride/run into segments on your GPS device and merging them back into a single activity afterwards. A single file can also be saved or uploaded on its own.
 - **Import activities directly from Strava**: browse your recent activities (with pagination, date filtering, a choice of 10/25/50 per page, and each activity's gear shown), pick the ones you want, and download them as GPX — Strava's API doesn't offer a direct GPX export, so the app rebuilds one from the underlying GPS/altitude/time (and optionally heart rate/cadence/power/temperature) data streams.
 - **Upload the combined result straight back to Strava**, with an activity-type dropdown. As on mobile, the combined file starts one second before its first source, so Strava doesn't reject it as a duplicate; once uploaded, the app offers to open the original activities (each in a tab, or your Activities page) so you can delete them yourself (Strava keeps deleted activities recoverable for 30 days).
 - **Preview tracks on a map** before combining: an OpenStreetMap view with each track in its own color, start/finish markers, and a legend.
@@ -323,4 +323,4 @@ See [`CHANGELOG.md`](CHANGELOG.md) for the full version history of the desktop a
 
 ---
 
-<p align="center"><sub>Desktop app version 3.8.1</sub></p>
+<p align="center"><sub>Desktop app version 3.9</sub></p>

@@ -30,6 +30,7 @@ import os
 import sys
 import re
 import json
+import gzip
 import time
 import math
 import socket
@@ -86,7 +87,7 @@ def resource_path(filename):
     script."""
     base = getattr(sys, "_MEIPASS", SCRIPT_DIR)
     return os.path.join(base, filename)
-APP_VERSION = "3.8.1"
+APP_VERSION = "3.9"
 CONFIG_PATH = os.path.join(SCRIPT_DIR, "strava_config.json")
 APP_CONFIG_PATH = os.path.join(SCRIPT_DIR, "app_config.json")  # app-wide settings (language...), kept
                                                                  # separate from Strava credentials
@@ -177,6 +178,7 @@ TR = {
                                 "changement d'avis.",
         "open_originals_tabs_btn": "Ouvrir chacune dans un nouvel onglet",
         "open_originals_page_btn": "Ouvrir la page des activités",
+        "open_originals_new_btn": "Voir la nouvelle activité sur Strava",
         "upload_name_title": "Nom de l'activité",
         "upload_name_prompt": "Nom à donner à l'activité sur Strava :",
         "upload_type_prompt": "Type d'activité :",
@@ -216,13 +218,13 @@ TR = {
         "show_secret": "👁",
         "hide_secret": "🙈",
         "status_none": "Aucun fichier chargé.",
-        "status_one": "1 fichier chargé — ajoutez-en au moins un second pour combiner.",
+        "status_one": "1 fichier chargé — enregistrez-le ou envoyez-le seul, ou ajoutez-en d'autres pour combiner.",
         "status_multiple": "{n} fichiers chargés, prêts à être combinés.",
         "unknown_time": "(horodatage inconnu)",
         "err_read_title": "Erreur de lecture",
         "err_read_body": "Impossible de lire {path} :\n{err}",
-        "warn_notenough_title": "Pas assez de fichiers",
-        "warn_notenough_body": "Ajoutez au moins deux fichiers GPX à combiner.",
+        "warn_notenough_title": "Aucun fichier",
+        "warn_notenough_body": "Ajoutez au moins un fichier GPX.",
         "err_base_title": "Fichier de base invalide",
         "err_base_body": "Le fichier le plus ancien ({path}) ne contient pas de balise </trkseg>.",
         "warn_skipped_title": "Fichiers ignorés",
@@ -305,6 +307,7 @@ TR = {
                                 "them.",
         "open_originals_tabs_btn": "Open each one in a new tab",
         "open_originals_page_btn": "Open Activities page",
+        "open_originals_new_btn": "View the new activity on Strava",
         "upload_name_title": "Activity name",
         "upload_name_prompt": "Name to give this activity on Strava:",
         "upload_type_prompt": "Activity type:",
@@ -343,13 +346,13 @@ TR = {
         "show_secret": "👁",
         "hide_secret": "🙈",
         "status_none": "No files loaded.",
-        "status_one": "1 file loaded — add at least one more to combine.",
+        "status_one": "1 file loaded — save or upload it on its own, or add more to combine.",
         "status_multiple": "{n} files loaded, ready to combine.",
         "unknown_time": "(unknown timestamp)",
         "err_read_title": "Read error",
         "err_read_body": "Could not read {path}:\n{err}",
-        "warn_notenough_title": "Not enough files",
-        "warn_notenough_body": "Add at least two GPX files to combine.",
+        "warn_notenough_title": "No files",
+        "warn_notenough_body": "Add at least one GPX file.",
         "err_base_title": "Invalid base file",
         "err_base_body": "The oldest file ({path}) does not contain a </trkseg> tag.",
         "warn_skipped_title": "Skipped files",
@@ -431,6 +434,7 @@ TR = {
                                 "cambias de opinión.",
         "open_originals_tabs_btn": "Abrir cada una en una nueva pestaña",
         "open_originals_page_btn": "Abrir la página de actividades",
+        "open_originals_new_btn": "Ver la nueva actividad en Strava",
         "upload_name_title": "Nombre de la actividad",
         "upload_name_prompt": "Nombre para esta actividad en Strava:",
         "upload_type_prompt": "Tipo de actividad:",
@@ -470,13 +474,13 @@ TR = {
         "show_secret": "👁",
         "hide_secret": "🙈",
         "status_none": "Ningún archivo cargado.",
-        "status_one": "1 archivo cargado — añade al menos uno más para combinar.",
+        "status_one": "1 archivo cargado — guárdalo o súbelo solo, o añade más para combinar.",
         "status_multiple": "{n} archivos cargados, listos para combinar.",
         "unknown_time": "(marca de tiempo desconocida)",
         "err_read_title": "Error de lectura",
         "err_read_body": "No se pudo leer {path}:\n{err}",
-        "warn_notenough_title": "Faltan archivos",
-        "warn_notenough_body": "Añade al menos dos archivos GPX para combinar.",
+        "warn_notenough_title": "Ningún archivo",
+        "warn_notenough_body": "Añade al menos un archivo GPX.",
         "err_base_title": "Archivo base inválido",
         "err_base_body": "El archivo más antiguo ({path}) no contiene una etiqueta </trkseg>.",
         "warn_skipped_title": "Archivos omitidos",
@@ -558,6 +562,7 @@ TR = {
                                 "wiederherzustellen.",
         "open_originals_tabs_btn": "Jede in einem neuen Tab öffnen",
         "open_originals_page_btn": "Aktivitäten-Seite öffnen",
+        "open_originals_new_btn": "Neue Aktivität auf Strava ansehen",
         "upload_name_title": "Name der Aktivität",
         "upload_name_prompt": "Name für diese Aktivität auf Strava:",
         "upload_type_prompt": "Aktivitätstyp:",
@@ -598,13 +603,13 @@ TR = {
         "show_secret": "👁",
         "hide_secret": "🙈",
         "status_none": "Keine Dateien geladen.",
-        "status_one": "1 Datei geladen — füge mindestens eine weitere hinzu, um zu kombinieren.",
+        "status_one": "1 Datei geladen — speichere oder lade sie einzeln hoch, oder füge weitere zum Kombinieren hinzu.",
         "status_multiple": "{n} Dateien geladen, bereit zum Kombinieren.",
         "unknown_time": "(unbekannter Zeitstempel)",
         "err_read_title": "Lesefehler",
         "err_read_body": "{path} konnte nicht gelesen werden:\n{err}",
-        "warn_notenough_title": "Nicht genug Dateien",
-        "warn_notenough_body": "Füge mindestens zwei GPX-Dateien zum Kombinieren hinzu.",
+        "warn_notenough_title": "Keine Dateien",
+        "warn_notenough_body": "Füge mindestens eine GPX-Datei hinzu.",
         "err_base_title": "Ungültige Basisdatei",
         "err_base_body": "Die älteste Datei ({path}) enthält kein </trkseg>-Tag.",
         "warn_skipped_title": "Übersprungene Dateien",
@@ -1362,27 +1367,30 @@ class StravaClient:
         """Uploads a GPX file as a new Strava activity. Returns the Strava
         upload id (NOT the final activity id — Strava processes uploads
         asynchronously; poll check_upload() with the returned id until it
-        reports an activity_id or an error)."""
+        reports an activity_id or an error). The file is sent gzipped
+        (Strava's "gpx.gz" type): lighter and faster, and it keeps very
+        long tracks under Strava's 25 MB file size limit. The file on disk
+        is left as plain GPX."""
         self._ensure_fresh_token()
         boundary = uuid.uuid4().hex
-        fields = {"data_type": "gpx"}
+        fields = {"data_type": "gpx.gz"}
         if name:
             fields["name"] = name
         if description:
             fields["description"] = description
 
         with open(filepath, "rb") as f:
-            file_bytes = f.read()
+            file_bytes = gzip.compress(f.read())
 
         parts = []
         for key, value in fields.items():
             parts.append(
                 f'--{boundary}\r\nContent-Disposition: form-data; name="{key}"\r\n\r\n{value}\r\n'.encode()
             )
-        filename = os.path.basename(filepath)
+        filename = os.path.basename(filepath) + ".gz"
         parts.append(
             (f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="{filename}"\r\n'
-             f'Content-Type: application/gpx+xml\r\n\r\n').encode() + file_bytes + b"\r\n"
+             f'Content-Type: application/gzip\r\n\r\n').encode() + file_bytes + b"\r\n"
         )
         parts.append(f"--{boundary}--\r\n".encode())
         body = b"".join(parts)
@@ -2233,12 +2241,15 @@ class OpenOriginalsDialog(tk.Toplevel):
     upload rather than before it, since the combined file's start time is
     already nudged by shift_first_trkpt_time() to avoid Strava's own
     duplicate-activity rejection — this is just encouraging cleanup, not
-    avoiding an error."""
+    avoiding an error. Also links to the newly created activity. The
+    buttons don't close it (the user may want several of them): only
+    "Close" does, or the window's own close button."""
 
-    def __init__(self, master_app, original_ids):
+    def __init__(self, master_app, original_ids, new_activity_id=None):
         super().__init__(master_app.root)
         self.t = master_app.t
         self.original_ids = original_ids
+        self.new_activity_id = new_activity_id
         self.title(self.t("open_originals_title"))
         self.resizable(False, False)
         self.transient(master_app.root)
@@ -2251,23 +2262,31 @@ class OpenOriginalsDialog(tk.Toplevel):
 
         btns = ttk.Frame(frame)
         btns.pack(fill="x", pady=(14, 0))
+        if self.new_activity_id:
+            ttk.Button(btns, text=self.t("open_originals_new_btn"),
+                       command=self._on_open_new).pack(fill="x", pady=(0, 12))
         ttk.Button(btns, text=self.t("open_originals_tabs_btn"),
                    command=self._on_open_tabs).pack(fill="x")
         ttk.Button(btns, text=self.t("open_originals_page_btn"),
                    command=self._on_open_page).pack(fill="x", pady=(6, 0))
 
-        self.protocol("WM_DELETE_WINDOW", self.destroy)
-        self.bind("<Escape>", lambda e: self.destroy())
+        ttk.Separator(frame).pack(fill="x", pady=(14, 10))
+        ttk.Button(frame, text=self.t("close"), command=self._close).pack(anchor="e")
+
+        self.protocol("WM_DELETE_WINDOW", self._close)
         self.grab_set()
+
+    def _on_open_new(self):
+        webbrowser.open_new_tab(f"https://www.strava.com/activities/{self.new_activity_id}/overview")
 
     def _on_open_tabs(self):
         for aid in self.original_ids:
             webbrowser.open_new_tab(f"https://www.strava.com/activities/{aid}/overview")
-        self.grab_release()
-        self.destroy()
 
     def _on_open_page(self):
         webbrowser.open_new_tab("https://www.strava.com/athlete/training")
+
+    def _close(self):
         self.grab_release()
         self.destroy()
 
@@ -2403,7 +2422,7 @@ class UploadProgressWindow(tk.Toplevel):
         self.close_btn.state(["!disabled"])
         self.protocol("WM_DELETE_WINDOW", self._close)
         if self._original_ids:
-            OpenOriginalsDialog(self.master_app, self._original_ids)
+            OpenOriginalsDialog(self.master_app, self._original_ids, activity_id)
 
     def _on_error(self, err):
         message = self.t("upload_status_error").format(err=err)
@@ -2629,7 +2648,7 @@ class GpxCombinerApp:
                 line += f"   |   {extras}"
             self.listbox.insert(tk.END, line)
         self._refresh_status()
-        self.btn_upload.state(["!disabled"] if len(self.files) >= 2 else ["disabled"])
+        self.btn_upload.state(["!disabled"] if self.files else ["disabled"])
         if self._preview_window is not None and self._preview_window.winfo_exists():
             self._preview_window.reload_tracks()
 
@@ -2666,12 +2685,23 @@ class GpxCombinerApp:
         (always builds fresh into a throwaway temp file at click time, so
         an upload can never be stale relative to whatever's currently
         loaded). Returns None (after showing its own error dialog) on
-        failure."""
-        if len(self.files) < 2:
+        failure. A single file is accepted too: nothing to combine, it is
+        just readied to be saved or sent on its own, with the same data
+        choices and the same one-second nudge (so a copy of an activity
+        that still exists on Strava isn't rejected as its duplicate)."""
+        if not self.files:
             messagebox.showwarning(self.t("warn_notenough_title"), self.t("warn_notenough_body"))
             return None
 
         include = {k: v.get() for k, v in self.include_field_vars.items()}
+
+        if len(self.files) == 1:
+            only = self.files[0]
+            if extract_first_trkseg(only["content"]) is None:
+                messagebox.showerror(self.t("err_base_title"),
+                                      self.t("err_base_body").format(path=only["path"]))
+                return None
+            return shift_first_trkpt_time(strip_extension_fields(only["content"], include))
 
         base = self.files[0]
         base_content = strip_extension_fields(base["content"], include)
