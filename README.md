@@ -76,7 +76,7 @@ The mobile app is the quickest way in: nothing to install or set up, and it work
 
 ### Good to know
 
-- **Strava limits the number of users**: the app can be connected to 10 Strava accounts at most for now. Logging out of the app keeps your place; to free it, remove GPX Combiner from **Settings → My Apps** on the Strava website.
+- **Strava limits the number of users**: the app can be connected to 10 Strava accounts at most for now. Logging out of the app keeps your place; to free it, use **Disconnect from Strava** under your name in the app, or remove GPX Combiner from **Settings → My Apps** on the Strava website.
 - **The first load can take a while**: the app runs on a free host that sleeps when nobody uses it, and wakes up in a few dozen seconds.
 - The interface is in English only.
 - No version number for now: it changes quickly while it's being tried out. A small "build N" in the footer shows which version you're looking at.
@@ -207,7 +207,7 @@ None of the three tools has analytics, ads or tracking of any kind.
 - Logging in with Strava gives the app's server a token to read your activities and upload new ones on your behalf. It is stored on that server (one per Strava account), used only to call Strava for you, and erased whenever the free host restarts — you then simply log in again.
 - Your activities and GPX files go through the server only to be combined; nothing is kept once the result is sent back to your phone or to Strava.
 - Map tiles come from OpenStreetMap, and the map library from unpkg.com, loaded directly by your browser.
-- You can remove the app's access to your Strava account at any time from **Settings → My Apps** on the Strava website.
+- You can remove the app's access to your Strava account at any time with **Disconnect from Strava** in the app, which also erases your token from the server, or from **Settings → My Apps** on the Strava website.
 
 **Desktop app and QGIS plugin**
 - All data stays local: GPX files, Strava credentials, and downloaded activities are only ever written to your own computer.

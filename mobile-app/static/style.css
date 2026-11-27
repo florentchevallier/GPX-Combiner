@@ -144,7 +144,19 @@ h2 { font-size: 1.1rem; margin: 20px 0 10px; }
    content below it — same on every screen for a consistent look. */
 .page-intro { margin-bottom: 16px; }
 
-#user-label { font-weight: 600; margin-bottom: 4px; }
+#user-label { font-weight: 600; margin-bottom: 2px; }
+/* A button that looks like a small link (e.g. "Disconnect from Strava"). */
+.link-btn {
+  display: block;
+  margin: 0 0 8px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 0.8rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
 
 .intro-row { position: relative; display: flex; align-items: center; gap: 10px; }
 .pro-toggle {

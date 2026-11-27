@@ -12,6 +12,7 @@ desktop app, QgsSettings for the QGIS plugin), pass it in, and after any
 call that may have changed tokens, save `client.config` back out.
 """
 
+import base64
 import os
 import re
 import json
@@ -189,6 +190,58 @@ class StravaClient:
         try:
             with _urlopen(req, timeout=20) as resp:
                 return json.loads(resp.read().decode())
+        except urllib.error.HTTPError as e:
+            raise StravaAPIError(f"{e.code} {e.read().decode()}")
+        except urllib.error.URLError as e:
+            raise StravaAPIError(str(e))
+
+    DEAUTHORIZE_URL = "https://www.strava.com/oauth/deauthorize"
+    REVOKE_URL = "https://www.strava.com/oauth/revoke"
+
+    def deauthorize(self):
+        """Disconnects the athlete from this app (Strava's POST
+        /oauth/deauthorize, with a fresh access token): per Strava's docs it
+        invalidates every token the app has for the athlete and removes the
+        app from the athlete's "My Apps" — which frees their place among
+        the athletes the app may connect. Strava retires this endpoint on
+        1 June 2027 in favour of /oauth/revoke (see revoke()), which, tested
+        on 27 Nov 2026, only invalidates the token given and leaves the app
+        connected: to revisit before then. Raises StravaAuthError if the
+        token can't be refreshed, StravaAPIError if Strava refuses or can't
+        be reached."""
+        self._ensure_fresh_token()
+        data = urllib.parse.urlencode({"access_token": self.config["access_token"]}).encode()
+        req = urllib.request.Request(self.DEAUTHORIZE_URL, data=data, method="POST")
+        req.add_header("Content-Type", "application/x-www-form-urlencoded")
+        try:
+            with _urlopen(req, timeout=15):
+                pass
+        except urllib.error.HTTPError as e:
+            raise StravaAPIError(f"{e.code} {e.read().decode()}")
+        except urllib.error.URLError as e:
+            raise StravaAPIError(str(e))
+
+    def revoke(self):
+        """Invalidates this app's token for the athlete (Strava's POST
+        /oauth/revoke, authenticated with the app's Client ID/Secret).
+        Revoking the refresh token also revokes the access tokens issued with
+        it. Strava answers 200 even for an unknown or already revoked token.
+        Note: tested on 27 Nov 2026, this does NOT remove the app from the
+        athlete's "My Apps" nor free their place — see deauthorize().
+        Raises StravaAPIError if Strava can't be reached or refuses."""
+        hint = "refresh_token" if self.config.get("refresh_token") else "access_token"
+        token = self.config.get(hint)
+        if not token:
+            return
+        data = urllib.parse.urlencode({"token": token, "token_type_hint": hint}).encode()
+        req = urllib.request.Request(self.REVOKE_URL, data=data, method="POST")
+        credentials = base64.b64encode(
+            f"{self.config['client_id']}:{self.config['client_secret']}".encode()).decode()
+        req.add_header("Authorization", f"Basic {credentials}")
+        req.add_header("Content-Type", "application/x-www-form-urlencoded")
+        try:
+            with _urlopen(req, timeout=15):
+                pass
         except urllib.error.HTTPError as e:
             raise StravaAPIError(f"{e.code} {e.read().decode()}")
         except urllib.error.URLError as e:

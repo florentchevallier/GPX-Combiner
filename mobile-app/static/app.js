@@ -219,6 +219,7 @@ function enterGuestHome() {
     "Local mode — no Strava account connected.";
   document.getElementById("activity-list-heading").textContent = "Files to combine";
   document.getElementById("day-btn").classList.add("hidden");
+  document.getElementById("disconnect-btn").classList.add("hidden");
   document.getElementById("load-more-btn").classList.add("hidden");
   document.getElementById("activities-max-hint").classList.add("hidden");
   document.getElementById("logout-link").classList.add("hidden");
@@ -1264,6 +1265,42 @@ document.getElementById("view-home").addEventListener("click", (e) => {
   if (!btn) return;
   const activity = state.activities.find(a => String(a.id) === btn.dataset.trimId);
   if (activity) openTrimScreen(activity);
+});
+
+// ---------------------------------------------------------------------------
+// "Disconnect from Strava" — unlike "Log out", frees the user's place among
+// the athletes Strava lets this app connect (see /disconnect in app.py)
+// ---------------------------------------------------------------------------
+
+document.getElementById("disconnect-btn").addEventListener("click", async () => {
+  const ok = confirm(
+    "This removes GPX Combiner's access to your Strava account and erases it " +
+    "from the app. You can reconnect anytime.\n\nDisconnect from Strava?");
+  if (!ok) return;
+  const btn = document.getElementById("disconnect-btn");
+  btn.disabled = true;
+  try {
+    const res = await fetch("/disconnect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.revoked === false) {
+      alert("You're disconnected from the app, but Strava couldn't be reached. " +
+            "To remove the access on Strava's side, go to Settings → My Apps " +
+            "on the Strava website.");
+    } else if (!res.ok) {
+      alert("Couldn't disconnect. Please try again later.");
+      btn.disabled = false;
+      return;
+    }
+  } catch (e) {
+    alert("Couldn't disconnect. Please try again later.");
+    btn.disabled = false;
+    return;
+  }
+  location.href = "/app/"; // back to the login screen
 });
 
 // ---------------------------------------------------------------------------

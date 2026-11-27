@@ -77,3 +77,11 @@ def get_user(athlete_id: int, db_path: str = DB_PATH):
             "SELECT * FROM users WHERE athlete_id = ?", (athlete_id,)
         ).fetchone()
         return dict(row) if row else None
+
+
+def delete_user(athlete_id: int, db_path: str = DB_PATH):
+    """Erases a user's row, tokens included (see "Disconnect from Strava"
+    in app.py)."""
+    with get_db(db_path) as conn:
+        conn.execute("DELETE FROM users WHERE athlete_id = ?", (athlete_id,))
+        conn.commit()

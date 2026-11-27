@@ -42,7 +42,7 @@ from flask import (
 
 load_dotenv()  # reads mobile-app/.env if present — see .env.example
 
-from models import init_db, upsert_user, get_user
+from models import init_db, upsert_user, get_user, delete_user
 from core.strava_client import (
     StravaClient,
     StravaAuthError,
@@ -67,7 +67,7 @@ OAUTH_REDIRECT_URI = f"{APP_BASE_URL}/oauth/callback"
 # a discreet build counter in the footer, incremented by one on every file
 # handed over, so it's obvious at a glance whether the phone is actually
 # running the latest deploy or an older cached one.
-BUILD_ID = "35"
+BUILD_ID = "37"
 
 app = Flask(__name__)
 app.secret_key = os.environ["FLASK_SECRET_KEY"]
@@ -203,6 +203,43 @@ def oauth_callback():
 def logout():
     session.clear()
     return redirect("/app/")
+
+
+@app.route("/disconnect", methods=["POST"])
+def disconnect():
+    """"Disconnect from Strava": removes the app's access to the user's
+    Strava account, erases their tokens from this server and ends the
+    session. Unlike /logout (this phone only), this frees the user's place
+    among the athletes Strava lets this app connect (10 for now). If Strava
+    can't be reached, the local part is done anyway and the answer says so
+    ("revoked": false), so the app can point to Strava's own settings.
+    POST with a JSON body only, so another site can't trigger it."""
+    if not request.is_json:
+        return jsonify({"error": "Expected a JSON request."}), 400
+    athlete_id, user = _require_login()
+    client = StravaClient({
+        "client_id": STRAVA_CLIENT_ID,
+        "client_secret": STRAVA_CLIENT_SECRET,
+        "access_token": user["access_token"],
+        "refresh_token": user["refresh_token"],
+        "expires_at": user["expires_at"],
+    })
+    # deauthorize() is what actually removes the app from the athlete's
+    # account (revoke() alone doesn't, see strava_client.py). If it fails,
+    # still invalidate the token we hold, and tell the app so it can point
+    # to Strava's own settings.
+    revoked = True
+    try:
+        client.deauthorize()
+    except (StravaAPIError, StravaAuthError):
+        revoked = False
+        try:
+            client.revoke()
+        except (StravaAPIError, StravaAuthError):
+            pass
+    delete_user(athlete_id)
+    session.clear()
+    return jsonify({"revoked": revoked})
 
 
 @app.route("/me")
