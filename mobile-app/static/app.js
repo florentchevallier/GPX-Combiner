@@ -145,8 +145,8 @@ const state = {
                          // never offered, only combining local files and
                          // downloading the result (see enterGuestHome below).
   lastUploadSucceeded: false, // set once doUpload succeeds; read by the
-                         // "← Back to list" handler to start fresh instead
-                         // of returning to a now-stale selection.
+                         // "← Back to list" handler to clear the selection
+                         // and refresh the recent activities.
 };
 
 // ---------------------------------------------------------------------------
@@ -612,6 +612,20 @@ document.getElementById("map-toggle-review-btn").addEventListener("click", () =>
 
 function clearHomeError() {
   document.getElementById("home-error").classList.add("hidden");
+}
+
+// Text gzipped by the browser itself, for sending: GPX shrinks several
+// times, which matters for long rides on a phone connection (and for
+// Strava's file size limit). null where the browser can't compress (older
+// ones): the text is then sent as is.
+async function gzipBlob(text) {
+  if (typeof CompressionStream === "undefined") return null;
+  try {
+    const stream = new Blob([text]).stream().pipeThrough(new CompressionStream("gzip"));
+    return await new Response(stream).blob();
+  } catch (e) {
+    return null;
+  }
 }
 
 function escapeHtml(s) {
@@ -1321,9 +1335,24 @@ function showDayNotice(msg) {
   el.classList.toggle("hidden", !msg);
 }
 
+// The last day picked: the calendar opens on it again (so on that month),
+// instead of today — fewer taps to reach the next day of an old trip.
+let lastPickedDay = "";
+
+// The day the calendar opens on: the last day picked. If its section has
+// been removed with ✕ meanwhile, another day of the same month instead —
+// a field doesn't fire "change" when the same value is picked again, so
+// that day could otherwise not be loaded back.
+function pickerStartDay() {
+  if (!lastPickedDay) return "";
+  if (document.querySelector(`#extra-sections [data-section="day:${lastPickedDay}"]`)) return lastPickedDay;
+  return lastPickedDay.slice(0, 8) + (lastPickedDay.endsWith("-01") ? "02" : "01");
+}
+
 document.getElementById("day-btn").addEventListener("click", () => {
   const input = document.getElementById("day-input");
   input.max = todayIso(); // no future days
+  input.value = pickerStartDay();
   showDayNotice("");
   try {
     input.showPicker();
@@ -1335,9 +1364,13 @@ document.getElementById("day-btn").addEventListener("click", () => {
 });
 
 document.getElementById("day-input").addEventListener("change", (e) => {
-  const day = e.target.value; // "YYYY-MM-DD", empty if cleared
-  e.target.value = "";        // so picking the same day again still fires
-  if (day) loadDay(day);
+  // "YYYY-MM-DD", empty if cleared. Picking the last day again changes
+  // nothing and fires nothing: its section is already shown.
+  const day = e.target.value;
+  if (day) {
+    lastPickedDay = day;
+    loadDay(day);
+  }
 });
 
 async function loadDay(day) {
@@ -1437,10 +1470,14 @@ document.getElementById("combine-btn").addEventListener("click", async () => {
       include: getIncludeSettings(),
     };
 
+    const json = JSON.stringify(body);
+    const gz = await gzipBlob(json);
     const res = await fetch("/combine", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      headers: gz
+        ? { "Content-Type": "application/json", "Content-Encoding": "gzip" }
+        : { "Content-Type": "application/json" },
+      body: gz || json,
     });
 
     if (!res.ok) {
@@ -1550,18 +1587,20 @@ function openReviewScreen(selectedActivities) {
 
 document.getElementById("back-to-home-btn").addEventListener("click", () => {
   if (state.lastUploadSucceeded) {
-    // After a successful upload, going "back" should start fresh rather
-    // than return to a now-stale selection (this mirrors the old separate
-    // "Combine more activities" success screen's behavior).
-    state.activities = [];
+    // After a successful upload: nothing stays ticked (that selection has
+    // been sent), but the days loaded with 📅, the local files and any
+    // trims stay — e.g. to send another part of the same track. Only
+    // "Recent activities" is reloaded, so the new activity shows up there.
+    document.querySelectorAll("#view-home .activity-list input[type=checkbox]")
+      .forEach(cb => { cb.checked = false; });
+    state.activities = state.activities.filter(a => a._section !== "recent");
     state.page = 1;
     state.combinedBlobText = null;
-    state.mode = "strava";
     state.lastUploadSucceeded = false;
     closeHomeMap();
     showDayNotice("");
     document.getElementById("load-more-btn").classList.remove("hidden");
-      showView("view-home");
+    showView("view-home");
     loadActivities();
   } else {
     showView("view-home");
@@ -1697,7 +1736,9 @@ async function doUpload() {
   let succeeded = false;
 
   const formData = new FormData();
-  formData.append("file", new Blob([gpxText], { type: "application/gpx+xml" }), "combined.gpx");
+  const gz = await gzipBlob(gpxText);
+  if (gz) formData.append("file", gz, "combined.gpx.gz");
+  else formData.append("file", new Blob([gpxText], { type: "application/gpx+xml" }), "combined.gpx");
   formData.append("name", name);
 
   try {

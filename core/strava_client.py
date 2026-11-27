@@ -272,10 +272,12 @@ class StravaClient:
         """Uploads a GPX file as a new Strava activity. Returns the Strava
         upload id (NOT the final activity id — Strava processes uploads
         asynchronously; poll check_upload() with the returned id until it
-        reports an activity_id or an error)."""
+        reports an activity_id or an error). A file whose name ends in ".gz"
+        is sent as gzip-compressed GPX (Strava's "gpx.gz" type)."""
         self._ensure_fresh_token()
         boundary = uuid.uuid4().hex
-        fields = {"data_type": "gpx"}
+        gzipped = filepath.endswith(".gz")
+        fields = {"data_type": "gpx.gz" if gzipped else "gpx"}
         if name:
             fields["name"] = name
         if description:
@@ -292,7 +294,8 @@ class StravaClient:
         filename = os.path.basename(filepath)
         parts.append(
             (f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="{filename}"\r\n'
-             f'Content-Type: application/gpx+xml\r\n\r\n').encode() + file_bytes + b"\r\n"
+             f'Content-Type: {"application/gzip" if gzipped else "application/gpx+xml"}\r\n\r\n').encode()
+            + file_bytes + b"\r\n"
         )
         parts.append(f"--{boundary}--\r\n".encode())
         body = b"".join(parts)

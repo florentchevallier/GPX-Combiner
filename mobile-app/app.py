@@ -23,11 +23,13 @@ Expected environment variables:
 
 import hmac
 import io
+import json
 import os
 import secrets
 import tempfile
 import time
 import urllib.parse
+import zlib
 from datetime import datetime, timedelta, timezone
 
 from dotenv import load_dotenv
@@ -69,7 +71,7 @@ OAUTH_REDIRECT_URI = f"{APP_BASE_URL}/oauth/callback"
 # a discreet build counter in the footer, incremented by one on every file
 # handed over, so it's obvious at a glance whether the phone is actually
 # running the latest deploy or an older cached one.
-BUILD_ID = "38"
+BUILD_ID = "40"
 
 app = Flask(__name__)
 app.secret_key = os.environ["FLASK_SECRET_KEY"]
@@ -87,12 +89,36 @@ app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
 app.config["SESSION_COOKIE_SECURE"] = APP_BASE_URL.startswith("https://")
 app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
 
-# Largest request accepted (local GPX files are sent as their full text to
-# /combine, which works without a Strava account): keeps a single huge
-# request from exhausting the server's memory. Generous for real tracks,
-# which rarely exceed a few MB each.
+# The phone gzips what it sends (see gzipBlob in static/app.js): GPX text
+# shrinks several times, so even long ultra rides travel light.
+# MAX_REQUEST_MB caps the bytes received, compressed or not (older browsers
+# that can't compress send plain text). MAX_GPX_MB caps what a compressed
+# request may expand to: processing takes about six times the GPX size in
+# memory (measured: 50 MB of GPX peaks around 300 MB), and Render's free
+# instance has 512 MB. Bigger files are for the desktop app.
 MAX_REQUEST_MB = 30
+MAX_GPX_MB = 60
 app.config["MAX_CONTENT_LENGTH"] = MAX_REQUEST_MB * 1024 * 1024
+
+
+class _TooLarge(Exception):
+    pass
+
+
+def _request_json():
+    """The request's JSON body, gunzipped first if the phone compressed it
+    (Content-Encoding: gzip), without ever expanding past MAX_GPX_MB."""
+    data = request.get_data()
+    if request.headers.get("Content-Encoding", "").lower() == "gzip":
+        limit = MAX_GPX_MB * 1024 * 1024
+        d = zlib.decompressobj(16 + zlib.MAX_WBITS)
+        try:
+            data = d.decompress(data, limit + 1)
+        except zlib.error:
+            raise ValueError("bad gzip")
+        if len(data) > limit or d.unconsumed_tail:
+            raise _TooLarge()
+    return json.loads(data)
 
 init_db()
 
@@ -343,8 +369,9 @@ def handle_permission_error(e):
 
 
 @app.errorhandler(413)
+@app.errorhandler(_TooLarge)
 def handle_too_large(e):
-    return jsonify({"error": f"Too much data at once (over {MAX_REQUEST_MB} MB). Try with fewer or smaller files."}), 413
+    return jsonify({"error": f"Too much data at once (over {MAX_GPX_MB} MB of GPX). Try with fewer or smaller files, or use the desktop app for very long tracks."}), 413
 
 
 @app.errorhandler(StravaAPIError)
@@ -442,7 +469,10 @@ def combine():
     there are Strava activities to fetch, the only part that actually calls
     the Strava API.
     """
-    body = request.get_json()
+    try:
+        body = _request_json()
+    except ValueError:
+        return jsonify({"error": "The data sent couldn't be read. Try again."}), 400
     include = body.get("include")  # None => combine_gpx_files keeps everything by default
 
     try:
@@ -506,8 +536,11 @@ def upload():
     athlete_id, user = _require_login()
     file = request.files["file"]
     name = request.form.get("name", "Combined activity")
+    # The phone sends the file gzipped when it can ("combined.gpx.gz"):
+    # passed on to Strava as is, in its "gpx.gz" format.
+    suffix = ".gpx.gz" if (file.filename or "").endswith(".gz") else ".gpx"
 
-    with tempfile.NamedTemporaryFile(suffix=".gpx", delete=False) as tmp:
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
         file.save(tmp.name)
         tmp_path = tmp.name
 
